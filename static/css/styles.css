@@ -1,0 +1,247 @@
+/* Global Styles */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    background: #f4f4f4;
+}
+
+/* Navbar */
+nav {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-around;
+    border-bottom: 1px solid #ddd;
+}
+nav a {
+    color: #c8102e; /* NHL red */
+    text-decoration: none;
+    font-weight: bold;
+}
+nav a:hover {
+    color: #2e6da4;
+}
+
+/* Dashboard and Game Stats */
+.dashboard, .stats-card {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+.team-progress, .stats-card {
+    background: #fff;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+.team-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+}
+.team-info {
+    text-align: center;
+}
+.team-logo {
+    max-width: 100px;
+    margin-bottom: 0.5rem;
+}
+.series-card {
+    margin-bottom: 2rem;
+}
+.series-card h3, .stats-card h3 {
+    color: #c8102e; /* NHL red */
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.toggle-btn {
+    background: #c8102e; /* NHL red */
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.toggle-btn:hover {
+    background: #a50d24; /* Darker red */
+}
+.game-grid, .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.game-card, .stat-item, .performer-item {
+    background: #f8f8f8;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.game-card:hover, .stat-item:hover, .performer-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+}
+.game-card.completed {
+    border-left: 4px solid #28a745; /* Green for completed */
+}
+.game-card.upcoming {
+    border-left: 4px solid #6c757d; /* Gray for upcoming */
+}
+.game-card.live {
+    border-left: 4px solid #fd7e14; /* Orange for live */
+}
+.game-card h4, .stats-card h2, .stats-card h3 {
+    color: #c8102e;
+    margin-bottom: 0.5rem;
+}
+.game-card a {
+    color: #2e6da4;
+    text-decoration: none;
+    font-weight: bold;
+}
+.game-card a:hover {
+    text-decoration: underline;
+}
+.status-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+.status-badge.completed {
+    background: #d4edda;
+    color: #155724;
+}
+.status-badge.upcoming {
+    background: #e9ecef;
+    color: #495057;
+}
+.status-badge.live {
+    background: #fff3cd;
+    color: #856404;
+}
+.winner {
+    font-weight: bold;
+}
+.trophy {
+    font-size: 0.9em;
+    margin-left: 0.3rem;
+    vertical-align: middle;
+}
+.no-games, .error {
+    color: #666;
+    text-align: center;
+    margin-top: 2rem;
+}
+.action-buttons {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+.btn {
+    background: #c8102e;
+    color: #fff;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: bold;
+    display: inline-block;
+}
+.btn:hover {
+    background: #a50d24;
+}
+.btn-secondary {
+    background: #6c757d;
+}
+.btn-secondary:hover {
+    background: #5a6268;
+}
+.game-info, .stats-section, .performers-section, .preview-info {
+    margin-bottom: 1.5rem;
+}
+.stat-value {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #c8102e;
+}
+.performers-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+/* Profile and Login */
+.profile-card, .login-card {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+.login-card {
+    max-width: 400px;
+}
+.form-group {
+    margin-bottom: 1.5rem;
+}
+.form-content {
+    padding: 0 1rem; /* Equal left and right padding for centered form */
+}
+label {
+    display: block;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 0.5rem;
+}
+input, select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+input:invalid, select:invalid {
+    border-color: #f8d7da;
+}
+.alert {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+}
+.alert-success {
+    background: #d4edda;
+    color: #155724;
+}
+.alert-error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+    .team-header {
+        flex-direction: column;
+        align-items: center;
+    }
+    .team-info {
+        margin-bottom: 1rem;
+    }
+    .game-grid, .stats-grid, .performers-list {
+        grid-template-columns: 1fr;
+    }
+    .toggle-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8em;
+    }
+}

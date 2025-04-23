@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+    <div class="login-card">
+        <h2>Login to Your Playoff Tracker</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <form method="POST">
+            <div class="form-content">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required aria-required="true">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required aria-required="true">
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+                <a href="{{ url_for('signup') }}" class="btn btn-secondary">Sign Up</a>
+            </div>
+        </form>
+    </div>
+{% endblock %}

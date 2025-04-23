@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Game Stats - {{ boxscore.awayTeam.abbrev }} vs {{ boxscore.homeTeam.abbrev }}{% endblock %}
+{% block content %}
+    <div class="stats-card">
+        <h2>{{ boxscore.awayTeam.commonName.default }} vs {{ boxscore.homeTeam.commonName.default }}</h2>
+        <section class="game-info">
+            <p><strong>Date:</strong> {{ boxscore.gameDate }}</p>
+            <p><strong>Final Score:</strong> {{ boxscore.awayTeam.score }} - {{ boxscore.homeTeam.score }}</p>
+            <p><strong>Venue:</strong> {{ boxscore.venue.default }}</p>
+        </section>
+        <section class="stats-section">
+            <h3>Game Stats</h3>
+            <div class="stats-grid">
+                <article class="stat-item">
+                    <span class="stat-value">{{ boxscore.awayTeam.sog|default(0) }}</span>
+                    <p>{{ boxscore.awayTeam.abbrev }} Shots</p>
+                </article>
+                <article class="stat-item">
+                    <span class="stat-value">{{ boxscore.homeTeam.sog|default(0) }}</span>
+                    <p>{{ boxscore.homeTeam.abbrev }} Shots</p>
+                </article>
+            </div>
+        </section>
+        <section class="performers-section">
+            <h3>Key Performers</h3>
+            <div class="performers-list">
+                {% for team_key in ['awayTeam', 'homeTeam'] %}
+                    {% for player in boxscore.playerByGameStats[team_key].forwards + boxscore.playerByGameStats[team_key].defense %}
+                        {% if player.goals > 0 or player.assists > 0 %}
+                            <article class="performer-item">
+                                <p>{{ player.name.default }} ({{ boxscore[team_key].abbrev }}): {{ player.goals }} G, {{ player.assists }} A</p>
+                            </article>
+                        {% endif %}
+                    {% endfor %}
+                    {% set goalie = boxscore.playerByGameStats[team_key].goalies|selectattr('decision', 'equalto', 'W')|first %}
+                    {% if goalie %}
+                        <article class="performer-item">
+                            <p>{{ goalie.name.default }} ({{ boxscore[team_key].abbrev }}): {{ goalie.saves }} saves, {{ (goalie.savePctg * 100)|round(1)|default(0) }}% SV%</p>
+                        </article>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </section>
+        <div class="action-buttons">
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+        </div>
+    </div>
+{% endblock %}

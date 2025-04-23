@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Playoff Tracker Dashboard{% endblock %}
+{% block content %}
+    <div class="dashboard">
+        <h1>Playoff Tracker - {{ current_date }}</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="team-progress">
+            <div class="team-header">
+                <div class="team-info">
+                    <img src="{{ west_logo_url }}" alt="{{ west_team.name }} Logo" class="team-logo">
+                    <h2>{{ west_team.name }} (Western Conference)</h2>
+                </div>
+                <div class="team-info">
+                    <img src="{{ east_logo_url }}" alt="{{ east_team.name }} Logo" class="team-logo">
+                    <h2>{{ east_team.name }} (Eastern Conference)</h2>
+                </div>
+            </div>
+            <div class="action-buttons">
+                <a href="{{ url_for('profile') }}" class="btn">Change Teams</a>
+            </div>
+            {% if series_to_display %}
+                {% for series in series_to_display %}
+                    <div class="series-card">
+                        <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}">Series {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
+                        <p>Series Status: {{ series.series_status }}</p>
+                        <div class="game-grid" id="grid-{{ series.series_letter }}" style="display: none;">
+                            {% for game in series.games %}
+                                <div class="game-card {{ game.state | lower }}">
+                                    <h4>Game {{ game.gameNumber }}</h4>
+                                    <p>
+                                        <span class="{% if game.winner == game.away_team %}winner{% endif %}">
+                                            {{ game.away_team }}
+                                            {% if game.winner == game.away_team and game.state == 'Completed' %}
+                                                <span class="trophy" aria-label="Winner">🏆</span>
+                                            {% endif %}
+                                        </span> ({{ game.away_score }}) vs
+                                        <span class="{% if game.winner == game.home_team %}winner{% endif %}">
+                                            {{ game.home_team }}
+                                            {% if game.winner == game.home_team and game.state == 'Completed' %}
+                                                <span class="trophy" aria-label="Winner">🏆</span>
+                                            {% endif %}
+                                        </span> ({{ game.home_score }})
+                                    </p>
+                                    <p>Date: {{ game.date }}</p>
+                                    <p>Status: <span class="status-badge {{ game.state | lower }}">{{ game.state }}</span></p>
+                                    <p>TV: {{ game.tv }}</p>
+                                    <p>Start: <span class="local-time" data-utc="{{ game.start_time }}"></span></p>
+                                    {% if game.state == "Completed" %}
+                                        <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="View stats for {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">View Stats</a>
+                                    {% else %}
+                                        <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="Preview or watch {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">Preview/Watch</a>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-games">No playoff series found for your teams yet. Check back as the playoffs progress!</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // Collapsible sections
+        document.querySelectorAll('.series-card h3').forEach(header => {
+            const toggleBtn = header.querySelector('.toggle-btn');
+            const grid = header.nextElementSibling.nextElementSibling;
+            header.addEventListener('click', () => {
+                const isExpanded = grid.style.display === 'grid';
+                grid.style.display = isExpanded ? 'none' : 'grid';
+                header.setAttribute('aria-expanded', !isExpanded);
+                toggleBtn.textContent = isExpanded ? 'Show Games' : 'Hide Games';
+                toggleBtn.setAttribute('aria-label', isExpanded ? `Show games for ${header.textContent.split(' ')[1]} vs ${header.textContent.split(' ')[3]}` : `Hide games for ${header.textContent.split(' ')[1]} vs ${header.textContent.split(' ')[3]}`);
+            });
+        });
+
+        // Convert UTC to local 12-hour time
+        document.querySelectorAll('.local-time').forEach(span => {
+            const utcTime = span.getAttribute('data-utc');
+            if (utcTime && utcTime !== 'TBD') {
+                const date = new Date(utcTime);
+                const options = {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                    timeZoneName: 'short'
+                };
+                span.textContent = date.toLocaleTimeString('en-US', options);
+            } else {
+                span.textContent = 'TBD';
+            }
+        });
+    </script>
+{% endblock %}

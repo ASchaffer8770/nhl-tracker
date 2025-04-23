@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Game Preview - {{ preview.teams|default('Game Preview') }}{% endblock %}
+{% block content %}
+    <div class="stats-card">
+        <h2>Game Preview</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% if error %}
+            <p class="error">{{ error }}</p>
+            <div class="action-buttons">
+                <a href="https://www.nhl.com/playoffs/2025/bracket" class="btn btn-primary" target="_blank" rel="noopener" aria-label="View NHL playoff bracket">View NHL Playoff Bracket</a>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary" aria-label="Return to dashboard">Back to Dashboard</a>
+            </div>
+        {% elif preview %}
+            <section class="preview-info">
+                <h3>{{ preview.teams }}</h3>
+                <p><strong>Date:</strong> {{ preview.date|default('TBD') }}</p>
+                <p><strong>Time:</strong> <span class="local-time" data-utc="{{ preview.time|default('TBD') }}"></span></p>
+                <p><strong>TV:</strong> {{ preview.tv|default('N/A') }}</p>
+                <p><strong>Watch:</strong> {{ preview.watch|default('Check ESPN+ or NHL.tv') }}</p>
+            </section>
+            <div class="action-buttons">
+                <a href="https://www.nhl.com/playoffs/2025/bracket" class="btn btn-primary" target="_blank" rel="noopener" aria-label="View NHL playoff bracket">View NHL Playoff Bracket</a>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary" aria-label="Return to dashboard">Back to Dashboard</a>
+            </div>
+        {% else %}
+            <p class="error">Game preview unavailable.</p>
+            <div class="action-buttons">
+                <a href="https://www.nhl.com/playoffs/2025/bracket" class="btn btn-primary" target="_blank" rel="noopener" aria-label="View NHL playoff bracket">View NHL Playoff Bracket</a>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary" aria-label="Return to dashboard">Back to Dashboard</a>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Convert UTC to local 12-hour time
+        document.querySelectorAll('.local-time').forEach(span => {
+            const utcTime = span.getAttribute('data-utc');
+            if (utcTime && utcTime !== 'TBD') {
+                const date = new Date(utcTime);
+                const options = {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                    timeZoneName: 'short'
+                };
+                span.textContent = date.toLocaleTimeString('en-US', options);
+            } else {
+                span.textContent = 'TBD';
+            }
+        });
+    </script>
+{% endblock %}
