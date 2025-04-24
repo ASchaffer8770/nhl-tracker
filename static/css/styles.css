@@ -50,10 +50,10 @@ nav a:hover {
     max-width: 100px;
     margin-bottom: 0.5rem;
 }
-.series-card {
+.series-card, .team-section {
     margin-bottom: 2rem;
 }
-.series-card h3, .stats-card h3 {
+.series-card h3, .stats-card h3, .team-section h3 {
     color: #c8102e; /* NHL red */
     cursor: pointer;
     display: flex;
@@ -80,7 +80,7 @@ nav a:hover {
     gap: 1rem;
     margin-top: 1rem;
 }
-.game-card, .stat-item, .performer-item {
+.game-card, .stat-item, .performer-item, .live-game-card {
     background: #f8f8f8;
     padding: 1rem;
     border-radius: 8px;
@@ -88,9 +88,12 @@ nav a:hover {
     text-align: center;
     transition: transform 0.2s, box-shadow 0.2s;
 }
-.game-card:hover, .stat-item:hover, .performer-item:hover {
+.game-card:hover, .stat-item:hover, .performer-item:hover, .live-game-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+}
+.live-game-card {
+    border-left: 4px solid #c8102e; /* Red for live */
 }
 .game-card.completed {
     border-left: 4px solid #28a745; /* Green for completed */
@@ -101,16 +104,16 @@ nav a:hover {
 .game-card.live {
     border-left: 4px solid #fd7e14; /* Orange for live */
 }
-.game-card h4, .stats-card h2, .stats-card h3 {
+.game-card h4, .stats-card h2, .stats-card h3, .live-game-card h4 {
     color: #c8102e;
     margin-bottom: 0.5rem;
 }
-.game-card a {
+.game-card a, .live-game-card a {
     color: #2e6da4;
     text-decoration: none;
     font-weight: bold;
 }
-.game-card a:hover {
+.game-card a:hover, .live-game-card a:hover {
     text-decoration: underline;
 }
 .status-badge {
@@ -129,6 +132,15 @@ nav a:hover {
 .status-badge.live {
     background: #fff3cd;
     color: #856404;
+}
+.live-badge {
+    background: #c8102e; /* NHL red */
+    color: #fff;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-weight: bold;
+    margin-left: 0.5rem;
 }
 .winner {
     font-weight: bold;

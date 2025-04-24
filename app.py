@@ -1,4 +1,3 @@
-import time
 import logging
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash
@@ -109,6 +108,45 @@ def get_series_for_teams(all_series, selected_teams):
             logger.debug(f"Found series for teams {top_team_abbr}/{bottom_team_abbr}")
     return selected_series
 
+#
+def fetch_live_game_data(teams, date):
+    """Fetch live game data for the given teams on the specified date."""
+    try:
+        schedule_url = f"{NHL_API_URL}schedule/{date.strftime('%Y-%m-%d')}"
+        response = requests.get(schedule_url, timeout=5)
+        response.raise_for_status()
+        games = response.json().get("games", [])
+
+        for game in games:
+            if game.get("gameState") == "LIVE" and any(
+                    team in [game.get("homeTeam", {}).get("abbrev", ""), game.get("awayTeam", {}).get("abbrev", "")] for
+                    team in teams):
+                game_id = str(game.get("id", ""))
+                boxscore_url = f"{NHL_API_URL}gamecenter/{game_id}/boxscore"
+                boxscore_response = requests.get(boxscore_url, timeout=5)
+                boxscore_response.raise_for_status()
+                boxscore = boxscore_response.json()
+
+                # Extract live game data
+                live_data = {
+                    "game_id": game_id,
+                    "teams": f"{boxscore.get('awayTeam', {}).get('abbrev', 'TBD')} @ {boxscore.get('homeTeam', {}).get('abbrev', 'TBD')}",
+                    "score": f"{boxscore.get('awayTeam', {}).get('score', 0)} - {boxscore.get('homeTeam', {}).get('score', 0)}",
+                    "period": boxscore.get('periodDescriptor', {}).get('number', 'TBD'),
+                    "clock": boxscore.get('clock', {}).get('timeRemaining', 'TBD'),
+                    "shots": f"{boxscore.get('awayTeam', {}).get('sog', 0)} - {boxscore.get('homeTeam', {}).get('sog', 0)}",
+                    "events": []  # Simplified; add recent events if needed
+                }
+                # Map to team for display
+                team = boxscore.get('homeTeam', {}).get('abbrev', '') if boxscore.get('homeTeam', {}).get('abbrev',
+                                                                                                          '') in teams else boxscore.get(
+                    'awayTeam', {}).get('abbrev', '')
+                return team, live_data
+        return None, None
+    except requests.RequestException as e:
+        logger.error(f"Failed to fetch live game data: {e}")
+        return None, None
+
 @login_manager.user_loader
 def load_user(user_id):
     logger.debug(f"Loading user: {user_id}")
@@ -216,6 +254,10 @@ def dashboard():
         all_series = get_all_playoff_series()
         series_to_display = get_series_for_teams(all_series, teams)
 
+        # Fetch live game data for today
+        west_live_team, west_live_game = fetch_live_game_data([user.favorite_west_team], datetime.now())
+        east_live_team, east_live_game = fetch_live_game_data([user.favorite_east_team], datetime.now())
+
         # Fetch team info
         west_team_info = next((t for t in fetch_nhl_teams()[0] if t["abbr"] == user.favorite_west_team),
                               {"name": "Unknown"})
@@ -226,7 +268,8 @@ def dashboard():
         west_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_west_team}_light.svg"
         east_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_east_team}_light.svg"
 
-        logger.debug(f"Rendering dashboard with {len(series_to_display)} series")
+        logger.debug(
+            f"Rendering dashboard with {len(series_to_display)} series, west_live={bool(west_live_game)}, east_live={bool(east_live_game)}")
         return render_template(
             "dashboard.html",
             west_team=west_team_info,
@@ -234,6 +277,8 @@ def dashboard():
             series_to_display=series_to_display,
             west_logo_url=west_logo_url,
             east_logo_url=east_logo_url,
+            west_live_game=west_live_game,
+            east_live_game=east_live_game,
             current_date=datetime.now().strftime("%Y-%m-%d")
         )
     except Exception as e:
@@ -246,6 +291,8 @@ def dashboard():
             series_to_display=[],
             west_logo_url="https://assets.nhle.com/logos/nhl/svg/NHL_light.svg",
             east_logo_url="https://assets.nhle.com/logos/nhl/svg/NHL_light.svg",
+            west_live_game=None,
+            east_live_game=None,
             current_date=datetime.now().strftime("%Y-%m-%d"),
             error=str(e)
         )
