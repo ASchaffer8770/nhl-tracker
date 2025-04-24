@@ -167,9 +167,19 @@ nav a:hover {
     text-decoration: none;
     font-weight: bold;
     display: inline-block;
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: manipulation;
 }
 .btn:hover {
     background: #a50d24;
+}
+.btn.active {
+    background: #8b0e1f; /* Slightly darker for touch feedback */
+}
+.btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
 }
 .btn-secondary {
     background: #6c757d;
@@ -238,6 +248,18 @@ input:invalid, select:invalid {
 .alert-error {
     background: #f8d7da;
     color: #721c24;
+}
+.error-message {
+    color: #721c24;
+    font-size: 0.9em;
+    margin-top: 0.25rem;
+    display: block;
+}
+.success-message {
+    color: #155724;
+    font-size: 0.9em;
+    margin-top: 0.25rem;
+    display: block;
 }
 
 /* Responsive Design */

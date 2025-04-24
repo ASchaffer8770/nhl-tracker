@@ -115,7 +115,7 @@
                 body: `username=${encodeURIComponent(username)}&mode=login`
             })
             .then(response => {
-                if (!response.ok) throw new Error('Network response was not ok');
+                if (!response.ok) throw new Error(`Network response was not ok: ${response.status}`);
                 return response.json();
             })
             .then(data => {
@@ -145,14 +145,30 @@
         }
 
         // Event listeners
-        usernameInput.addEventListener('input', () => {
-            clearTimeout(usernameInput.debounce);
-            usernameInput.debounce = setTimeout(checkUsername, 500);
-        });
+        usernameInput.addEventListener('input', checkUsername);
         passwordInput.addEventListener('input', validatePassword);
+
+        // Touch event listeners for iOS
+        submitBtn.addEventListener('touchstart', (event) => {
+            console.log('Touchstart on submit button');
+            if (!submitBtn.disabled) {
+                submitBtn.classList.add('active');
+            }
+        });
+        submitBtn.addEventListener('touchend', (event) => {
+            console.log('Touchend on submit button');
+            submitBtn.classList.remove('active');
+            if (!submitBtn.disabled) {
+                document.getElementById('login-form').submit();
+                console.log('Form submitted via touchend');
+            } else {
+                console.log('Touchend ignored: Button is disabled');
+            }
+        });
 
         // Form submission handler
         document.getElementById('login-form').addEventListener('submit', (event) => {
+            console.log('Form submit event triggered');
             if (submitBtn.disabled) {
                 event.preventDefault();
                 console.log('Form submission prevented: Button is disabled');
