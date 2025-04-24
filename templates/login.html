@@ -2,7 +2,7 @@
 {% block title %}Login{% endblock %}
 {% block content %}
     <div class="login-card">
-        <h2>Login to Your NHL Playoff Tracker</h2>
+        <h2>Login to Your Playoff Tracker</h2>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -10,19 +10,132 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        <form method="POST">
+        <form method="POST" id="login-form">
             <div class="form-content">
                 <div class="form-group">
                     <label for="username">Username</label>
-                    <input type="text" id="username" name="username" required aria-required="true">
+                    <input type="text" id="username" name="username" required aria-required="true" aria-describedby="username-status" pattern="[a-zA-Z0-9]+" minlength="3">
+                    <span id="username-status" class="error-message" style="display: none;"></span>
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required aria-required="true">
+                    <input type="password" id="password" name="password" required aria-required="true" aria-describedby="password-status" minlength="6">
+                    <span id="password-status" class="error-message" style="display: none;"></span>
                 </div>
-                <button type="submit" class="btn btn-primary">Login</button>
+                <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Login</button>
                 <a href="{{ url_for('signup') }}" class="btn btn-secondary">Sign Up</a>
             </div>
         </form>
     </div>
+
+    <script>
+        // Username and password validation
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const usernameStatus = document.getElementById('username-status');
+        const passwordStatus = document.getElementById('password-status');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function validateUsername() {
+            const username = usernameInput.value.trim();
+            const usernameRegex = /^[a-zA-Z0-9]+$/;
+            if (username.length === 0) {
+                usernameStatus.textContent = 'Username is required.';
+                usernameStatus.style.display = 'block';
+                usernameStatus.classList.remove('success-message');
+                usernameStatus.classList.add('error-message');
+                return false;
+            } else if (username.length < 3) {
+                usernameStatus.textContent = 'Username must be at least 3 characters.';
+                usernameStatus.style.display = 'block';
+                usernameStatus.classList.remove('success-message');
+                usernameStatus.classList.add('error-message');
+                return false;
+            } else if (!usernameRegex.test(username)) {
+                usernameStatus.textContent = 'Username must be alphanumeric.';
+                usernameStatus.style.display = 'block';
+                usernameStatus.classList.remove('success-message');
+                usernameStatus.classList.add('error-message');
+                return false;
+            }
+            return true;
+        }
+
+        function validatePassword() {
+            const password = passwordInput.value;
+            if (password.length === 0) {
+                passwordStatus.textContent = 'Password is required.';
+                passwordStatus.style.display = 'block';
+                passwordStatus.classList.remove('success-message');
+                passwordStatus.classList.add('error-message');
+                submitBtn.disabled = true;
+                return false;
+            } else if (password.length < 6) {
+                passwordStatus.textContent = 'Password must be at least 6 characters.';
+                passwordStatus.style.display = 'block';
+                passwordStatus.classList.remove('success-message');
+                passwordStatus.classList.add('error-message');
+                submitBtn.disabled = true;
+                return false;
+            } else {
+                passwordStatus.textContent = 'Password is valid.';
+                passwordStatus.style.display = 'block';
+                passwordStatus.classList.remove('error-message');
+                passwordStatus.classList.add('success-message');
+                return true;
+            }
+        }
+
+        function checkFormValidity() {
+            const usernameValid = usernameStatus.classList.contains('success-message');
+            const passwordValid = passwordStatus.classList.contains('success-message');
+            submitBtn.disabled = !(usernameValid && passwordValid);
+        }
+
+        // Live username existence check
+        function checkUsername() {
+            const username = usernameInput.value.trim();
+            if (!validateUsername()) {
+                submitBtn.disabled = true;
+                return;
+            }
+
+            fetch('/check_username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `username=${encodeURIComponent(username)}&mode=login`
+            })
+            .then(response => response.json())
+            .then(data => {
+                usernameStatus.textContent = data.message;
+                usernameStatus.style.display = 'block';
+                if (data.available) {
+                    usernameStatus.classList.remove('error-message');
+                    usernameStatus.classList.add('success-message');
+                } else {
+                    usernameStatus.classList.remove('success-message');
+                    usernameStatus.classList.add('error-message');
+                }
+                checkFormValidity();
+            })
+            .catch(error => {
+                usernameStatus.textContent = 'Error checking username.';
+                usernameStatus.style.display = 'block';
+                usernameStatus.classList.remove('success-message');
+                usernameStatus.classList.add('error-message');
+                submitBtn.disabled = true;
+            });
+        }
+
+        // Event listeners
+        usernameInput.addEventListener('input', () => {
+            clearTimeout(usernameInput.debounce);
+            usernameInput.debounce = setTimeout(checkUsername, 500);
+        });
+        passwordInput.addEventListener('input', validatePassword);
+
+        // Initial validation
+        validateUsername();
+        validatePassword();
+    </script>
 {% endblock %}

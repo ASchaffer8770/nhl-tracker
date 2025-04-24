@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_sqlalchemy import SQLAlchemy
 import requests
 import os
+import re
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -108,7 +109,7 @@ def get_series_for_teams(all_series, selected_teams):
             logger.debug(f"Found series for teams {top_team_abbr}/{bottom_team_abbr}")
     return selected_series
 
-#
+#fetches live game data if one is currently live
 def fetch_live_game_data(teams, date):
     """Fetch live game data for the given teams on the specified date."""
     try:
@@ -152,56 +153,101 @@ def load_user(user_id):
     logger.debug(f"Loading user: {user_id}")
     return db.session.get(User, user_id)
 
-
+#both are root routes for logging in
 @app.route("/", methods=["GET", "POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         logger.debug("Processing POST request for login")
         username = request.form.get("username")
         password = request.form.get("password")
-        logger.debug(f"Attempting login for username: {username}")
-        try:
+
+        if not username or not password:
+            logger.debug("Missing login credentials")
+            flash("Username and password are required.", "error")
+        else:
             user = db.session.get(User, username)
-            if user and user.password == password:
-                logger.debug("Password match, logging in user")
-                login_user(user)
-                next_page = request.args.get('next', url_for('dashboard'))
-                logger.debug(f"Redirecting to: {next_page}")
-                return redirect(next_page)
+            if not user:
+                logger.debug(f"Login failed: Username {username} not found")
+                flash("Username does not exist.", "error")
+            elif user.password != password:
+                logger.debug(f"Login failed: Incorrect password for {username}")
+                flash("Incorrect password.", "error")
             else:
-                logger.debug("Invalid credentials")
-                flash("Invalid credentials")
-        except Exception as e:
-            logger.error(f"Login error: {str(e)}")
-            flash(f"Login error: {str(e)}")
+                login_user(user)
+                logger.debug(f"User {username} logged in")
+                flash("Login successful!", "success")
+                return redirect(url_for("dashboard"))
     logger.debug("Rendering login page")
     return render_template("login.html")
 
-
+#Sign up route now has regex for user credentials
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
         logger.debug("Processing POST request for signup")
         username = request.form.get("username")
         password = request.form.get("password")
-        if not db.session.get(User, username):
+        confirm_password = request.form.get("confirm_password")
+        logger.debug(
+            f"Signup attempt: username={username}, password_length={len(password or '')}, confirm_password_length={len(confirm_password or '')}")
+
+        # Validation checks
+        if not username or not password or not confirm_password:
+            logger.debug("Missing form fields")
+            flash("All fields are required.", "error")
+        elif len(username) < 3:
+            logger.debug("Username too short")
+            flash("Username must be at least 3 characters.", "error")
+        elif not re.match(r"^[a-zA-Z0-9]+$", username):
+            logger.debug("Invalid username format")
+            flash("Username must be alphanumeric.", "error")
+        elif len(password) < 6:
+            logger.debug("Password too short")
+            flash("Password must be at least 6 characters.", "error")
+        elif password != confirm_password:
+            logger.debug("Passwords do not match")
+            flash("Passwords do not match.", "error")
+        elif db.session.get(User, username):
+            logger.debug("Username already exists")
+            flash("Username already exists.", "error")
+        else:
             new_user = User(id=username, password=password)
             db.session.add(new_user)
             try:
                 db.session.commit()
-                logger.debug(f"User {username} created")
-                flash("Signup successful! Please log in.")
+                logger.debug(f"User {username} created successfully")
+                flash("Signup successful! Please log in.", "success")
                 return redirect(url_for("login"))
             except Exception as e:
                 db.session.rollback()
                 logger.error(f"Signup error: {str(e)}")
-                flash(f"Signup error: {str(e)}")
-        else:
-            logger.debug("Username already exists")
-            flash("Username already exists")
+                flash(f"Signup error: {str(e)}", "error")
     logger.debug("Rendering signup page")
     return render_template("signup.html")
 
+#check db to see if user already exists
+@app.route("/check_username", methods=["POST"])
+def check_username():
+    username = request.form.get("username")
+    mode = request.form.get("mode", "signup")
+    logger.debug(f"Checking username: {username}, mode={mode}")
+    if not username:
+        logger.debug("Username check: Missing username")
+        return jsonify({"available": False, "message": "Username is required."})
+    user_exists = bool(db.session.get(User, username))
+    if mode == "signup":
+        if user_exists:
+            logger.debug(f"Username check: {username} already taken")
+            return jsonify({"available": False, "message": "Username is already taken."})
+        logger.debug(f"Username check: {username} available")
+        return jsonify({"available": True, "message": "Username is available."})
+    else:  # mode == "login"
+        if user_exists:
+            logger.debug(f"Username check: {username} exists")
+            return jsonify({"available": True, "message": "Username exists."})
+        logger.debug(f"Username check: {username} does not exist")
+        return jsonify({"available": False, "message": "Username does not exist."})
 
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
