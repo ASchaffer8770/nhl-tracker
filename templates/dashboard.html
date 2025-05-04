@@ -126,7 +126,7 @@
         // Collapsible sections
         document.querySelectorAll('.series-card h3').forEach(header => {
             const toggleBtn = header.querySelector('.toggle-btn');
-            const grid = header.nextElementSibling.nextElementSibling;
+            const grid = document.getElementById(header.getAttribute('aria-controls'));
             header.addEventListener('click', () => {
                 const isExpanded = grid.style.display === 'grid';
                 grid.style.display = isExpanded ? 'none' : 'grid';
