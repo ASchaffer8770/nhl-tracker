@@ -81,9 +81,9 @@ def fetch_nhl_teams(season="20242025"):
                 "name": team.get("teamName", {}).get("default", ""),
                 "conference": team.get("conferenceName", "")
             }
-            if team_data["conference"] == "Western" and len(west_teams) < 8:
+            if team_data["conference"] == "Western" and len(west_teams) < 16:  # Include all playoff teams
                 west_teams.append(team_data)
-            elif team_data["conference"] == "Eastern" and len(east_teams) < 8:
+            elif team_data["conference"] == "Eastern" and len(east_teams) < 16:
                 east_teams.append(team_data)
 
         return west_teams, east_teams
@@ -93,7 +93,7 @@ def fetch_nhl_teams(season="20242025"):
 
 # Fetch all playoff series
 def get_all_playoff_series(season="20242025"):
-    series_letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    series_letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p']
     all_series = []
     for letter in series_letters:
         url = f"{NHL_API_URL}schedule/playoff-series/{season}/{letter.lower()}"
@@ -116,8 +116,9 @@ def get_series_for_teams(all_series, selected_teams):
         if top_team_abbr in selected_teams or bottom_team_abbr in selected_teams:
             selected_series.append({
                 'series_letter': series.get('seriesLetter', ''),
-                'top_team': series.get('topSeedTeam', {}).get('abbrev', ''),
-                'bottom_team': series.get('bottomSeedTeam', {}).get('abbrev', ''),
+                'round': series.get('round', 'Unknown'),
+                'top_team': top_team_abbr,
+                'bottom_team': bottom_team_abbr,
                 'series_status': f"{series.get('topSeedTeam', {}).get('seriesWins', 0)}-{series.get('bottomSeedTeam', {}).get('seriesWins', 0)}",
                 'games': [
                     {
@@ -144,64 +145,58 @@ def get_series_for_teams(all_series, selected_teams):
             logger.debug(f"Found series for teams {top_team_abbr}/{bottom_team_abbr}")
     return selected_series
 
-# Fetches live game data if one is currently live
-def fetch_live_game_data(teams, date):
-    """Fetch live game data for the given teams on the specified date range."""
-    try:
-        dates = [date, date + timedelta(days=1)]
-        for check_date in dates:
-            date_str = check_date.strftime('%Y-%m-%d')
-            schedule_url = f"{NHL_API_URL}schedule/{date_str}"
-            logger.debug(f"Fetching schedule for {date_str} with teams {teams}")
-            response = requests.get(schedule_url, timeout=5)
-            response.raise_for_status()
-            games = response.json().get("games", [])
-            logger.debug(f"Found {len(games)} games on {date_str}: {games}")
+# Determine team status (eliminated, current round)
+def get_team_status(all_series, team_abbr):
+    status = {'eliminated': False, 'current_round': 'Not in Playoffs'}
+    for series in all_series:
+        top_team = series.get('topSeedTeam', {}).get('abbrev', '')
+        bottom_team = series.get('bottomSeedTeam', {}).get('abbrev', '')
+        top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
+        bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
+        round = series.get('round', 'Unknown')
 
-            for game in games:
-                home_abbrev = game.get("homeTeam", {}).get("abbrev", "")
-                away_abbrev = game.get("awayTeam", {}).get("abbrev", "")
-                logger.debug(f"Checking game: home={home_abbrev}, away={away_abbrev}, state={game.get('gameState')}")
-                if game.get("gameState") == "LIVE" and any(team in [home_abbrev, away_abbrev] for team in teams):
-                    game_id = str(game.get("id", ""))
-                    boxscore_url = f"{NHL_API_URL}gamecenter/{game_id}/boxscore"
-                    logger.debug(f"Fetching live boxscore for game {game_id}")
-                    boxscore_response = requests.get(boxscore_url, timeout=5)
-                    boxscore_response.raise_for_status()
-                    boxscore = boxscore_response.json()
+        if team_abbr == top_team:
+            if bottom_wins >= 4:
+                status['eliminated'] = True
+            else:
+                status['current_round'] = f"Round {round}" if round.isdigit() else round
+        elif team_abbr == bottom_team:
+            if top_wins >= 4:
+                status['eliminated'] = True
+            else:
+                status['current_round'] = f"Round {round}" if round.isdigit() else round
 
-                    live_data = {
-                        "game_id": game_id,
-                        "teams": f"{boxscore.get('awayTeam', {}).get('abbrev', 'TBD')} @ {boxscore.get('homeTeam', {}).get('abbrev', 'TBD')}",
-                        "score": f"{boxscore.get('awayTeam', {}).get('score', 0)} - {boxscore.get('homeTeam', {}).get('score', 0)}",
-                        "period": boxscore.get('periodDescriptor', {}).get('number', 'TBD'),
-                        "clock": boxscore.get('clock', {}).get('timeRemaining', 'TBD'),
-                        "shots": f"{boxscore.get('awayTeam', {}).get('sog', 0)} - {boxscore.get('homeTeam', {}).get('sog', 0)}",
-                        "events": []
-                    }
-                    team = home_abbrev if home_abbrev in teams else away_abbrev
-                    logger.debug(f"Live game found: team={team}, data={live_data}")
-                    return team, live_data
+    return status
 
-        logger.debug(f"No live games found for {teams} on {dates}, using mock data")
-        if teams:
-            mock_team = teams[0]
-            mock_data = {
-                "game_id": "2024030999",
-                "teams": f"TST @ {mock_team}",
-                "score": "2 - 1",
-                "period": "2",
-                "clock": "12:34",
-                "shots": "15 - 10",
-                "events": []
-            }
-            logger.debug(f"Mock live game: team={mock_team}, data={mock_data}")
-            return mock_team, mock_data
-        logger.debug("No teams provided for mock data")
-        return None, None
-    except requests.RequestException as e:
-        logger.error(f"Failed to fetch live game data: {e}")
-        return None, None
+# Build playoff bracket
+def build_playoff_bracket(all_series):
+    bracket = {
+        'Western': {'Round 1': [], 'Round 2': [], 'Conference Finals': [], 'Stanley Cup Final': []},
+        'Eastern': {'Round 1': [], 'Round 2': [], 'Conference Finals': [], 'Stanley Cup Final': []}
+    }
+    for series in all_series:
+        conference = series.get('topSeedTeam', {}).get('conferenceName', '')
+        round = series.get('round', 'Unknown')
+        if round.isdigit():
+            round_name = f"Round {round}"
+        elif round.lower() in ['conference finals', 'stanley cup final']:
+            round_name = round
+        else:
+            continue
+
+        series_data = {
+            'top_team': series.get('topSeedTeam', {}).get('abbrev', ''),
+            'bottom_team': series.get('bottomSeedTeam', {}).get('abbrev', ''),
+            'series_status': f"{series.get('topSeedTeam', {}).get('seriesWins', 0)}-{series.get('bottomSeedTeam', {}).get('seriesWins', 0)}",
+            'winner': series.get('topSeedTeam', {}).get('abbrev', '') if series.get('topSeedTeam', {}).get('seriesWins', 0) >= 4 else series.get('bottomSeedTeam', {}).get('abbrev', '') if series.get('bottomSeedTeam', {}).get('seriesWins', 0) >= 4 else None
+        }
+
+        if conference == 'Western':
+            bracket['Western'][round_name].append(series_data)
+        elif conference == 'Eastern':
+            bracket['Eastern'][round_name].append(series_data)
+
+    return bracket
 
 @app.route("/")
 def index():
@@ -232,12 +227,12 @@ def callback():
                     db.session.add(user)
                     db.session.commit()
                     logger.debug(f"Created new user: {session['user_id']}")
-                    session['new_user'] = True  # Flag for new user
+                    session['new_user'] = True
                 else:
                     logger.debug(f"Existing user logged in: {session['user_id']}")
                     session['new_user'] = False
             finally:
-                db.session.remove()  # Clean up session
+                db.session.remove()
             flash("Login successful!", "success")
             return redirect(url_for("dashboard"))
         flash("Authentication failed.", "error")
@@ -280,7 +275,7 @@ def profile():
                     db.session.commit()
                     logger.debug(f"Profile updated for user: {session['user_id']}")
                     flash("Profile updated successfully!", "success")
-                    session.pop('new_user', None)  # Clear new user flag
+                    session.pop('new_user', None)
                     return redirect(url_for("dashboard"))
                 except Exception as e:
                     db.session.rollback()
@@ -289,7 +284,7 @@ def profile():
         return render_template("profile.html", west_teams=west_teams, east_teams=east_teams,
                                user_email=session.get('user_email'))
     finally:
-        db.session.remove()  # Clean up session
+        db.session.remove()
 
 @app.route("/dashboard")
 def dashboard():
@@ -297,7 +292,6 @@ def dashboard():
         logger.debug("Unauthorized dashboard access")
         return redirect(url_for("login"))
     try:
-        # Check if new user to avoid database query if likely to fail
         if session.get('new_user'):
             flash("Please select your favorite teams in your profile.", "info")
             return redirect(url_for("profile"))
@@ -312,14 +306,17 @@ def dashboard():
         teams = [user.favorite_west_team, user.favorite_east_team]
         all_series = get_all_playoff_series()
         series_to_display = get_series_for_teams(all_series, teams)
-        west_live_team, west_live_game = fetch_live_game_data([user.favorite_west_team], datetime.now())
-        east_live_team, east_live_game = fetch_live_game_data([user.favorite_east_team], datetime.now())
         west_team_info = next((t for t in fetch_nhl_teams()[0] if t["abbr"] == user.favorite_west_team),
                               {"name": "Unknown", "abbr": "Unknown"})
         east_team_info = next((t for t in fetch_nhl_teams()[1] if t["abbr"] == user.favorite_east_team),
                               {"name": "Unknown", "abbr": "Unknown"})
+        west_team_status = get_team_status(all_series, user.favorite_west_team)
+        east_team_status = get_team_status(all_series, user.favorite_east_team)
+        west_team_info.update(west_team_status)
+        east_team_info.update(east_team_status)
         west_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_west_team}_light.svg"
         east_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_east_team}_light.svg"
+        bracket = build_playoff_bracket(all_series)
         return render_template(
             "dashboard.html",
             west_team=west_team_info,
@@ -327,8 +324,7 @@ def dashboard():
             series_to_display=series_to_display,
             west_logo_url=west_logo_url,
             east_logo_url=east_logo_url,
-            west_live_game=west_live_game,
-            east_live_game=east_live_game,
+            bracket=bracket,
             current_date=datetime.now().strftime("%Y-%m-%d"),
             user_email=session.get('user_email')
         )
@@ -346,14 +342,13 @@ def dashboard():
             series_to_display=[],
             west_logo_url="https://assets.nhle.com/logos/nhl/svg/NHL_light.svg",
             east_logo_url="https://assets.nhle.com/logos/nhl/svg/NHL_light.svg",
-            west_live_game=None,
-            east_live_game=None,
+            bracket={},
             current_date=datetime.now().strftime("%Y-%m-%d"),
             error=str(e),
             user_email=session.get('user_email')
         )
     finally:
-        db.session.remove()  # Clean up session
+        db.session.remove()
 
 @app.route("/game/<game_id>")
 def game_details(game_id):
@@ -396,7 +391,7 @@ def game_details(game_id):
         flash(f"API error: {e}", "error")
         return render_template("game_preview.html", error=str(e), user_email=session.get('user_email'))
     finally:
-        db.session.remove()  # Clean up session
+        db.session.remove()
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
