@@ -26,7 +26,7 @@ NHL_API_URL = "https://api-web.nhle.com/v1/"
 AUTH0_DOMAIN = os.getenv('AUTH0_DOMAIN')
 AUTH0_CLIENT_ID = os.getenv('AUTH0_CLIENT_ID')
 AUTH0_CLIENT_SECRET = os.getenv('AUTH0_CLIENT_SECRET')
-AUTH0_CALLBACK_URL = os.getenv('AUTH0_CALLBACK_URL', url_for('callback', _external=True, _scheme='https'))
+AUTH0_CALLBACK_URL = os.getenv('AUTH0_CALLBACK_URL')  # No default url_for here
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -201,7 +201,8 @@ def index():
 @app.route("/login")
 def login():
     logger.debug(f"Initiating Auth0 login")
-    return oauth.auth0.authorize_redirect(redirect_uri=AUTH0_CALLBACK_URL)
+    callback_url = AUTH0_CALLBACK_URL or url_for('callback', _external=True, _scheme='https')
+    return oauth.auth0.authorize_redirect(redirect_uri=callback_url)
 
 @app.route("/callback")
 def callback():
