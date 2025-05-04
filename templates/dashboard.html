@@ -16,10 +16,12 @@
                 <div class="team-info">
                     <img src="{{ west_logo_url }}" alt="{{ west_team.name }} Logo" class="team-logo">
                     <h2>{{ west_team.name }} (Western Conference)</h2>
+                    <p><strong>Status:</strong> {% if west_team.eliminated %}Eliminated{% else %}{{ west_team.current_round }}{% endif %}</p>
                 </div>
                 <div class="team-info">
                     <img src="{{ east_logo_url }}" alt="{{ east_team.name }} Logo" class="team-logo">
                     <h2>{{ east_team.name }} (Eastern Conference)</h2>
+                    <p><strong>Status:</strong> {% if east_team.eliminated %}Eliminated{% else %}{{ east_team.current_round }}{% endif %}</p>
                 </div>
             </div>
             <div class="action-buttons">
@@ -29,114 +31,135 @@
             <!-- Western Team Section -->
             <div class="team-section">
                 <h3>{{ west_team.name }}</h3>
-                {% if west_live_game %}
-                    <div class="live-game-card">
-                        <h4>Live Game <span class="live-badge">LIVE</span></h4>
-                        <p>{{ west_live_game.teams }}</p>
-                        <p><strong>Score:</strong> {{ west_live_game.score }}</p>
-                        <p><strong>Period:</strong> {{ west_live_game.period }}</p>
-                        <p><strong>Time Remaining:</strong> {{ west_live_game.clock }}</p>
-                        <p><strong>Shots:</strong> {{ west_live_game.shots }}</p>
-                        <a href="{{ url_for('game_details', game_id=west_live_game.game_id) }}" aria-label="Watch live game {{ west_live_game.teams }}">Watch Live</a>
-                    </div>
-                {% endif %}
-                {% for series in series_to_display %}
-                    {% if west_team.abbr in [series.top_team, series.bottom_team] %}
-                        <div class="series-card">
-                            <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}">Series {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
-                            <p>Series Status: {{ series.series_status }}</p>
-                            <div class="game-grid" id="grid-{{ series.series_letter }}" style="display: none;">
-                                {% for game in series.games %}
-                                    <div class="game-card {{ game.state | lower }}">
-                                        <h4>Game {{ game.gameNumber }}</h4>
-                                        <p>
-                                            <span class="{% if game.winner == game.away_team %}winner{% endif %}">
-                                                {{ game.away_team }}
-                                                {% if game.winner == game.away_team and game.state == 'Completed' %}
-                                                    <span class="trophy" aria-label="Winner">🏆</span>
-                                                {% endif %}
-                                            </span> ({{ game.away_score }}) vs
-                                            <span class="{% if game.winner == game.home_team %}winner{% endif %}">
-                                                {{ game.home_team }}
-                                                {% if game.winner == game.home_team and game.state == 'Completed' %}
-                                                    <span class="trophy" aria-label="Winner">🏆</span>
-                                                {% endif %}
-                                            </span> ({{ game.home_score }})
-                                        </p>
-                                        <p>Date: {{ game.date }}</p>
-                                        <p>Status: <span class="status-badge {{ game.state | lower }}">{{ game.state }}</span></p>
-                                        <p>TV: {{ game.tv }}</p>
-                                        <p>Start: <span class="local-time" data-utc="{{ game.start_time }}"></span></p>
-                                        {% if game.state == "Completed" %}
-                                            <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="View stats for {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">View Stats</a>
-                                        {% else %}
-                                            <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="Preview or watch {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">Preview/Watch</a>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
-                            </div>
+                {% for series in series_to_display if west_team.abbr in [series.top_team, series.bottom_team] %}
+                    <div class="series-card">
+                        <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}">Current Series: {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
+                        <p>Series Status: {{ series.series_status }}</p>
+                        <p>Round: {{ series.round }}</p>
+                        <div class="game-grid" id="grid-{{ series.series_letter }}" style="display: none;">
+                            {% for game in series.games %}
+                                <div class="game-card {{ game.state | lower }}">
+                                    <h4>Game {{ game.gameNumber }}</h4>
+                                    <p>
+                                        <span class="{% if game.winner == game.away_team %}winner{% endif %}">
+                                            {{ game.away_team }}
+                                            {% if game.winner == game.away_team and game.state == 'Completed' %}
+                                                <span class="trophy" aria-label="Winner">🏆</span>
+                                            {% endif %}
+                                        </span> ({{ game.away_score }}) vs
+                                        <span class="{% if game.winner == game.home_team %}winner{% endif %}">
+                                            {{ game.home_team }}
+                                            {% if game.winner == game.home_team and game.state == 'Completed' %}
+                                                <span class="trophy" aria-label="Winner">🏆</span>
+                                            {% endif %}
+                                        </span> ({{ game.home_score }})
+                                    </p>
+                                    <p>Date: {{ game.date }}</p>
+                                    <p>Status: <span class="status-badge {{ game.state | lower }}">{{ game.state }}</span></p>
+                                    <p>TV: {{ game.tv }}</p>
+                                    <p>Start: <span class="local-time" data-utc="{{ game.start_time }}"></span></p>
+                                    {% if game.state == "Completed" %}
+                                        <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="View stats for {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">View Stats</a>
+                                    {% else %}
+                                        <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="Preview or watch {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">Preview/Watch</a>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
                         </div>
-                    {% endif %}
+                    </div>
+                {% else %}
+                    <p class="no-games">No current series for {{ west_team.name }}.</p>
                 {% endfor %}
             </div>
 
             <!-- Eastern Team Section -->
             <div class="team-section">
                 <h3>{{ east_team.name }}</h3>
-                {% if east_live_game %}
-                    <div class="live-game-card">
-                        <h4>Live Game <span class="live-badge">LIVE</span></h4>
-                        <p>{{ east_live_game.teams }}</p>
-                        <p><strong>Score:</strong> {{ east_live_game.score }}</p>
-                        <p><strong>Period:</strong> {{ east_live_game.period }}</p>
-                        <p><strong>Time Remaining:</strong> {{ east_live_game.clock }}</p>
-                        <p><strong>Shots:</strong> {{ east_live_game.shots }}</p>
-                        <a href="{{ url_for('game_details', game_id=east_live_game.game_id) }}" aria-label="Watch live game {{ east_live_game.teams }}">Watch Live</a>
-                    </div>
-                {% endif %}
-                {% for series in series_to_display %}
-                    {% if east_team.abbr in [series.top_team, series.bottom_team] %}
-                        <div class="series-card">
-                            <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}">Series {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
-                            <p>Series Status: {{ series.series_status }}</p>
-                            <div class="game-grid" id="grid-{{ series.series_letter }}" style="display: none;">
-                                {% for game in series.games %}
-                                    <div class="game-card {{ game.state | lower }}">
-                                        <h4>Game {{ game.gameNumber }}</h4>
-                                        <p>
-                                            <span class="{% if game.winner == game.away_team %}winner{% endif %}">
-                                                {{ game.away_team }}
-                                                {% if game.winner == game.away_team and game.state == 'Completed' %}
-                                                    <span class="trophy" aria-label="Winner">🏆</span>
-                                                {% endif %}
-                                            </span> ({{ game.away_score }}) vs
-                                            <span class="{% if game.winner == game.home_team %}winner{% endif %}">
-                                                {{ game.home_team }}
-                                                {% if game.winner == game.home_team and game.state == 'Completed' %}
-                                                    <span class="trophy" aria-label="Winner">🏆</span>
-                                                {% endif %}
-                                            </span> ({{ game.home_score }})
-                                        </p>
-                                        <p>Date: {{ game.date }}</p>
-                                        <p>Status: <span class="status-badge {{ game.state | lower }}">{{ game.state }}</span></p>
-                                        <p>TV: {{ game.tv }}</p>
-                                        <p>Start: <span class="local-time" data-utc="{{ game.start_time }}"></span></p>
-                                        {% if game.state == "Completed" %}
-                                            <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="View stats for {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">View Stats</a>
-                                        {% else %}
-                                            <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="Preview or watch {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">Preview/Watch</a>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
-                            </div>
+                {% for series in series_to_display if east_team.abbr in [series.top_team, series.bottom_team] %}
+                    <div class="series-card">
+                        <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}">Current Series: {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
+                        <p>Series Status: {{ series.series_status }}</p>
+                        <p>Round: {{ series.round }}</p>
+                        <div class="game-grid" id="grid-{{ series.series_letter }}" style="display: none;">
+                            {% for game in series.games %}
+                                <div class="game-card {{ game.state | lower }}">
+                                    <h4>Game {{ game.gameNumber }}</h4>
+                                    <p>
+                                        <span class="{% if game.winner == game.away_team %}winner{% endif %}">
+                                            {{ game.away_team }}
+                                            {% if game.winner == game.away_team and game.state == 'Completed' %}
+                                                <span class="trophy" aria-label="Winner">🏆</span>
+                                            {% endif %}
+                                        </span> ({{ game.away_score }}) vs
+                                        <span class="{% if game.winner == game.home_team %}winner{% endif %}">
+                                            {{ game.home_team }}
+                                            {% if game.winner == game.home_team and game.state == 'Completed' %}
+                                                <span class="trophy" aria-label="Winner">🏆</span>
+                                            {% endif %}
+                                        </span> ({{ game.home_score }})
+                                    </p>
+                                    <p>Date: {{ game.date }}</p>
+                                    <p>Status: <span class="status-badge {{ game.state | lower }}">{{ game.state }}</span></p>
+                                    <p>TV: {{ game.tv }}</p>
+                                    <p>Start: <span class="local-time" data-utc="{{ game.start_time }}"></span></p>
+                                    {% if game.state == "Completed" %}
+                                        <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="View stats for {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">View Stats</a>
+                                    {% else %}
+                                        <a href="{{ url_for('game_details', game_id=game.id) }}" aria-label="Preview or watch {{ game.away_team }} vs {{ game.home_team }} on {{ game.date }}">Preview/Watch</a>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
                         </div>
-                    {% endif %}
+                    </div>
+                {% else %}
+                    <p class="no-games">No current series for {{ east_team.name }}.</p>
                 {% endfor %}
             </div>
 
-            {% if not series_to_display %}
-                <p class="no-games">No playoff series found for your teams yet. Check back as the playoffs progress!</p>
-            {% endif %}
+            <!-- Playoff Bracket -->
+            <div class="bracket">
+                <h2>2025 Stanley Cup Playoffs Bracket</h2>
+                {% if bracket.Western or bracket.Eastern %}
+                    <div class="conference-bracket">
+                        <h3>Western Conference</h3>
+                        {% for round, series_list in bracket.Western.items() %}
+                            {% if series_list %}
+                                <div class="round">
+                                    <h4>{{ round }}</h4>
+                                    {% for series in series_list %}
+                                        <div class="series">
+                                            <p>{{ series.top_team }} vs {{ series.bottom_team }}: {{ series.series_status }}</p>
+                                            {% if series.winner %}
+                                                <p>Winner: {{ series.winner }}</p>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <div class="conference-bracket">
+                        <h3>Eastern Conference</h3>
+                        {% for round, series_list in bracket.Eastern.items() %}
+                            {% if series_list %}
+                                <div class="round">
+                                    <h4>{{ round }}</h4>
+                                    {% for series in series_list %}
+                                        <div class="series">
+                                            <p>{{ series.top_team }} vs {{ series.bottom_team }}: {{ series.series_status }}</p>
+                                            {% if series.winner %}
+                                                <p>Winner: {{ series.winner }}</p>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="no-games">No playoff bracket data available.</p>
+                {% endif %}
+            </div>
         </div>
     </div>
 
@@ -150,7 +173,7 @@
                 grid.style.display = isExpanded ? 'none' : 'grid';
                 header.setAttribute('aria-expanded', !isExpanded);
                 toggleBtn.textContent = isExpanded ? 'Show Games' : 'Hide Games';
-                toggleBtn.setAttribute('aria-label', isExpanded ? `Show games for ${header.textContent.split(' ')[1]} vs ${header.textContent.split(' ')[3]}` : `Hide games for ${header.textContent.split(' ')[1]} vs ${header.textContent.split(' ')[3]}`);
+                toggleBtn.setAttribute('aria-label', isExpanded ? `Show games for ${header.textContent.split(' ')[2]} vs ${header.textContent.split(' ')[4]}` : `Hide games for ${header.textContent.split(' ')[2]} vs ${header.textContent.split(' ')[4]}`);
             });
         });
 

@@ -81,7 +81,7 @@ def fetch_nhl_teams(season="20242025"):
                 "name": team.get("teamName", {}).get("default", ""),
                 "conference": team.get("conferenceName", "")
             }
-            if team_data["conference"] == "Western" and len(west_teams) < 16:  # Include all playoff teams
+            if team_data["conference"] == "Western" and len(west_teams) < 16:
                 west_teams.append(team_data)
             elif team_data["conference"] == "Eastern" and len(east_teams) < 16:
                 east_teams.append(team_data)
@@ -101,7 +101,7 @@ def get_all_playoff_series(season="20242025"):
             response = requests.get(url, timeout=5)
             response.raise_for_status()
             series_data = response.json()
-            if series_data.get('seriesLetter'):  # Ensure valid series data
+            if series_data.get('seriesLetter'):
                 all_series.append(series_data)
                 logger.debug(f"Fetched series {letter}: {series_data.get('seriesLetter')}")
         except requests.exceptions.HTTPError as e:
@@ -111,70 +111,93 @@ def get_all_playoff_series(season="20242025"):
             raise
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch series {letter}: {e}")
+    logger.debug(f"All series fetched: {len(all_series)} series")
     return all_series
 
-# Selects the series for teams saved to the user's profile
+# Selects the current series for teams saved to the user's profile
 def get_series_for_teams(all_series, selected_teams):
     selected_series = []
-    selected_teams = [team.upper() for team in selected_teams]  # Normalize to uppercase
+    selected_teams = [team.upper() for team in selected_teams]
+    team_series = {team: None for team in selected_teams}  # Track latest series per team
+
     for series in all_series:
         top_team_abbr = series.get('topSeedTeam', {}).get('abbrev', '').upper()
         bottom_team_abbr = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
-        if top_team_abbr in selected_teams or bottom_team_abbr in selected_teams:
-            series_data = {
-                'series_letter': series.get('seriesLetter', ''),
-                'round': str(series.get('round', 'Unknown')),  # Convert to string
-                'top_team': top_team_abbr,
-                'bottom_team': bottom_team_abbr,
-                'series_status': f"{series.get('topSeedTeam', {}).get('seriesWins', 0)}-{series.get('bottomSeedTeam', {}).get('seriesWins', 0)}",
-                'games': [
-                    {
-                        'id': str(game.get('id', '')),
-                        'gameNumber': game.get('gameNumber', 'TBD'),
-                        'date': datetime.strptime(game.get('startTimeUTC', '').split('T')[0], '%Y-%m-%d').strftime(
-                            '%m-%d-%Y') if 'T' in game.get('startTimeUTC', '') else 'TBD',
-                        'home_team': game.get('homeTeam', {}).get('abbrev', ''),
-                        'away_team': game.get('awayTeam', {}).get('abbrev', ''),
-                        'home_score': game.get('homeTeam', {}).get('score', 0),
-                        'away_score': game.get('awayTeam', {}).get('score', 0),
-                        'state': "Completed" if game.get('gameState', 'TBD') == "OFF" else "Upcoming" if game.get(
-                            'gameState', 'TBD') == "FUT" else game.get('gameState', 'TBD'),
-                        'tv': game.get('tvBroadcasts', [{}])[0].get('network', 'N/A') if game.get(
-                            'tvBroadcasts') else 'N/A',
-                        'start_time': game.get('startTimeUTC', '') if game.get('startTimeUTC', '') else 'TBD',
-                        'winner': game.get('homeTeam', {}).get('abbrev', '') if game.get('homeTeam', {}).get('score',
-                                                                                                             0) > game.get(
-                            'awayTeam', {}).get('score', 0) else game.get('awayTeam', {}).get('abbrev', '') if game.get(
-                            'awayTeam', {}).get('score', 0) > game.get('homeTeam', {}).get('score', 0) else None
-                    } for game in series.get('games', [])
-                ]
-            }
-            selected_series.append(series_data)
-            logger.debug(f"Found series for teams {top_team_abbr}/{bottom_team_abbr}: {series_data}")
+        top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
+        bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
+        round = str(series.get('round', 'Unknown'))
+
+        # Skip completed series where the team lost
+        for team in selected_teams:
+            if team == top_team_abbr and bottom_wins >= 4:
+                continue
+            if team == bottom_team_abbr and top_wins >= 4:
+                continue
+
+            if team == top_team_abbr or team == bottom_team_abbr:
+                current_series_round = int(round) if round.isdigit() else 999  # High number for named rounds
+                existing_series = team_series[team]
+                if not existing_series or current_series_round > int(existing_series.get('round', '0')) if existing_series.get('round', '0').isdigit() else 999:
+                    series_data = {
+                        'series_letter': series.get('seriesLetter', ''),
+                        'round': round,
+                        'top_team': top_team_abbr,
+                        'bottom_team': bottom_team_abbr,
+                        'series_status': f"{top_wins}-{bottom_wins}",
+                        'games': [
+                            {
+                                'id': str(game.get('id', '')),
+                                'gameNumber': game.get('gameNumber', 'TBD'),
+                                'date': datetime.strptime(game.get('startTimeUTC', '').split('T')[0], '%Y-%m-%d').strftime(
+                                    '%m-%d-%Y') if 'T' in game.get('startTimeUTC', '') else 'TBD',
+                                'home_team': game.get('homeTeam', {}).get('abbrev', ''),
+                                'away_team': game.get('awayTeam', {}).get('abbrev', ''),
+                                'home_score': game.get('homeTeam', {}).get('score', 0),
+                                'away_score': game.get('awayTeam', {}).get('score', 0),
+                                'state': "Completed" if game.get('gameState', 'TBD') == "OFF" else "Upcoming" if game.get(
+                                    'gameState', 'TBD') == "FUT" else game.get('gameState', 'TBD'),
+                                'tv': game.get('tvBroadcasts', [{}])[0].get('network', 'N/A') if game.get(
+                                    'tvBroadcasts') else 'N/A',
+                                'start_time': game.get('startTimeUTC', '') if game.get('startTimeUTC', '') else 'TBD',
+                                'winner': game.get('homeTeam', {}).get('abbrev', '') if game.get('homeTeam', {}).get('score',
+                                                                                                                    0) > game.get(
+                                    'awayTeam', {}).get('score', 0) else game.get('awayTeam', {}).get('abbrev', '') if game.get(
+                                    'awayTeam', {}).get('score', 0) > game.get('homeTeam', {}).get('score', 0) else None
+                            } for game in series.get('games', [])
+                        ]
+                    }
+                    team_series[team] = series_data
+                    logger.debug(f"Updated series for team {team}: {series_data}")
+
+    selected_series = [series for series in team_series.values() if series]
     logger.debug(f"Selected series: {selected_series}")
     return selected_series
 
 # Determine team status (eliminated, current round)
 def get_team_status(all_series, team_abbr):
     status = {'eliminated': False, 'current_round': 'Not in Playoffs'}
-    team_abbr = team_abbr.upper()  # Normalize to uppercase
+    team_abbr = team_abbr.upper()
+    max_round = 0
     for series in all_series:
         top_team = series.get('topSeedTeam', {}).get('abbrev', '').upper()
         bottom_team = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
         top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
         bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
-        round = str(series.get('round', 'Unknown'))  # Convert to string
+        round = str(series.get('round', 'Unknown'))
+        round_num = int(round) if round.isdigit() else 999
 
         if team_abbr == top_team:
             if bottom_wins >= 4:
                 status['eliminated'] = True
-            else:
+            elif round_num > max_round:
                 status['current_round'] = f"Round {round}" if round.isdigit() else round
+                max_round = round_num
         elif team_abbr == bottom_team:
             if top_wins >= 4:
                 status['eliminated'] = True
-            else:
+            elif round_num > max_round:
                 status['current_round'] = f"Round {round}" if round.isdigit() else round
+                max_round = round_num
 
     return status
 
@@ -186,7 +209,7 @@ def build_playoff_bracket(all_series):
     }
     for series in all_series:
         conference = series.get('topSeedTeam', {}).get('conferenceName', '')
-        round = str(series.get('round', 'Unknown'))  # Convert to string
+        round = str(series.get('round', 'Unknown'))
         if round.isdigit():
             round_name = f"Round {round}"
         elif round.lower() in ['conference finals', 'stanley cup final']:
@@ -206,6 +229,7 @@ def build_playoff_bracket(all_series):
         elif conference == 'Eastern':
             bracket['Eastern'][round_name].append(series_data)
 
+    logger.debug(f"Bracket data: {bracket}")
     return bracket
 
 @app.route("/")
@@ -321,7 +345,7 @@ def dashboard():
         east_team_info = next((t for t in fetch_nhl_teams()[1] if t["abbr"] == user.favorite_east_team),
                               {"name": "Unknown", "abbr": "Unknown"})
         west_team_status = get_team_status(all_series, user.favorite_west_team)
-        east_team_status = get_team_status(all_series, user.favorite_east_team)
+        east_team_info = get_team_status(all_series, user.favorite_east_team)
         west_team_info.update(west_team_status)
         east_team_info.update(east_team_status)
         west_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_west_team}_light.svg"
