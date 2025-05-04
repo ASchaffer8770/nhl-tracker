@@ -101,9 +101,11 @@ def get_all_playoff_series(season="20242025"):
             response = requests.get(url, timeout=5)
             response.raise_for_status()
             series_data = response.json()
-            if series_data.get('seriesLetter') and series_data.get('topSeedTeam') and series_data.get('bottomSeedTeam'):
+            if series_data.get('seriesLetter') and series_data.get('topSeedTeam', {}).get('abbrev') and series_data.get('bottomSeedTeam', {}).get('abbrev'):
                 all_series.append(series_data)
                 logger.debug(f"Fetched series {letter}: {series_data.get('seriesLetter')} with teams {series_data.get('topSeedTeam', {}).get('abbrev')} vs {series_data.get('bottomSeedTeam', {}).get('abbrev')}")
+            else:
+                logger.debug(f"Skipping series {letter} due to incomplete data: {series_data}")
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
                 logger.debug(f"Series {letter} not found: {e}")
@@ -121,14 +123,16 @@ def get_series_for_teams(all_series, selected_teams):
     team_series = {team: None for team in selected_teams}  # Track latest active series per team
 
     for series in all_series:
-        top_team_abbr = series.get('topSeedTeam', {}).get('abbrev', '').upper()
-        bottom_team_abbr = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
+        top_team_data = series.get('topSeedTeam', {})
+        bottom_team_data = series.get('bottomSeedTeam', {})
+        top_team_abbr = top_team_data.get('abbrev', '').upper()
+        bottom_team_abbr = bottom_team_data.get('abbrev', '').upper()
         if not top_team_abbr or not bottom_team_abbr:
-            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} due to missing team data")
+            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} due to missing team abbreviations")
             continue
 
-        top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
-        bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
+        top_wins = top_team_data.get('seriesWins', 0)
+        bottom_wins = bottom_team_data.get('seriesWins', 0)
         round = str(series.get('round', 'Unknown'))
         round_num = int(round) if round.isdigit() else 999
 
@@ -163,8 +167,7 @@ def get_series_for_teams(all_series, selected_teams):
                                 'away_score': game.get('awayTeam', {}).get('score', 0),
                                 'state': "Completed" if game.get('gameState', 'TBD') == "OFF" else "Upcoming" if game.get(
                                     'gameState', 'TBD') == "FUT" else game.get('gameState', 'TBD'),
-                                'tv': game.get('tvBroadcasts', [{}])[0].get('network', 'N/A') if game.get(
-                                    'tvBroadcasts') else 'N/A',
+                                'tv': game.get('tvBroadcasts', [{}])[0].get('network', 'N/A') if game.get('tvBroadcasts') else 'N/A',
                                 'start_time': game.get('startTimeUTC', '') if game.get('startTimeUTC', '') else 'TBD',
                                 'winner': game.get('homeTeam', {}).get('abbrev', '') if game.get('homeTeam', {}).get('score',
                                                                                                                     0) > game.get(
@@ -186,14 +189,16 @@ def get_team_status(all_series, team_abbr):
     team_abbr = team_abbr.upper()
     max_round = 0
     for series in all_series:
-        top_team = series.get('topSeedTeam', {}).get('abbrev', '').upper()
-        bottom_team = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
+        top_team_data = series.get('topSeedTeam', {})
+        bottom_team_data = series.get('bottomSeedTeam', {})
+        top_team = top_team_data.get('abbrev', '').upper()
+        bottom_team = bottom_team_data.get('abbrev', '').upper()
         if not top_team or not bottom_team:
             logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} in status check due to missing team data")
             continue
 
-        top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
-        bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
+        top_wins = top_team_data.get('seriesWins', 0)
+        bottom_wins = bottom_team_data.get('seriesWins', 0)
         round = str(series.get('round', 'Unknown'))
         round_num = int(round) if round.isdigit() else 999
 
@@ -221,7 +226,7 @@ def build_playoff_bracket(all_series):
     for series in all_series:
         top_team = series.get('topSeedTeam', {})
         bottom_team = series.get('bottomSeedTeam', {})
-        if not top_team or not bottom_team:
+        if not top_team.get('abbrev') or not bottom_team.get('abbrev'):
             logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} in bracket due to missing team data")
             continue
 
@@ -433,8 +438,7 @@ def game_details(game_id):
                     "date": datetime.strptime(game.get('startTimeUTC', '').split('T')[0], '%Y-%m-%d').strftime(
                         '%m-%d-%Y') if 'T' in game.get('startTimeUTC', '') else 'TBD',
                     "time": game.get('startTimeUTC', '') if game.get('startTimeUTC', '') else 'TBD',
-                    "tv": game.get('tvBroadcasts', [{}])[0].get('network', 'N/A') if game.get(
-                        'tvBroadcasts') else 'N/A',
+                    "tv": game.get('tvBroadcasts', [{}])[0].get('network', 'N/A') if game.get('tvBroadcasts') else 'N/A',
                     "watch": "Stream on ESPN+"
                 }
                 return render_template("game_preview.html", preview=preview_data, user_email=session.get('user_email'))
