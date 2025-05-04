@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 from urllib.parse import urlencode
 from authlib.integrations.flask_client import OAuth
+from sqlalchemy.exc import OperationalError
 
 # Load environment variables (for local development)
 load_dotenv()
@@ -15,8 +16,19 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY')
 if not app.secret_key:
     raise ValueError("No SECRET_KEY set in environment variables")
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///users.db')
+
+# Database configuration
+database_url = os.getenv('DATABASE_URL', 'sqlite:///users.db')
+if database_url.startswith('postgresql://'):
+    database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1) + '?sslmode=require'
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_size': 5,
+    'max_overflow': 10,
+    'pool_timeout': 30,
+}
 app.config['SESSION_PERMANENT'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = True
@@ -26,7 +38,7 @@ NHL_API_URL = "https://api-web.nhle.com/v1/"
 AUTH0_DOMAIN = os.getenv('AUTH0_DOMAIN')
 AUTH0_CLIENT_ID = os.getenv('AUTH0_CLIENT_ID')
 AUTH0_CLIENT_SECRET = os.getenv('AUTH0_CLIENT_SECRET')
-AUTH0_CALLBACK_URL = os.getenv('AUTH0_CALLBACK_URL')  # No default url_for here
+AUTH0_CALLBACK_URL = os.getenv('AUTH0_CALLBACK_URL')
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -213,14 +225,19 @@ def callback():
         if user_info:
             session['user_id'] = user_info.get('sub')
             session['user_email'] = user_info.get('email', 'Unknown')
-            user = db.session.get(User, session['user_id'])
-            if not user:
-                user = User(id=session['user_id'])
-                db.session.add(user)
-                db.session.commit()
-                logger.debug(f"Created new user: {session['user_id']}")
-            else:
-                logger.debug(f"Existing user logged in: {session['user_id']}")
+            try:
+                user = db.session.get(User, session['user_id'])
+                if not user:
+                    user = User(id=session['user_id'])
+                    db.session.add(user)
+                    db.session.commit()
+                    logger.debug(f"Created new user: {session['user_id']}")
+                    session['new_user'] = True  # Flag for new user
+                else:
+                    logger.debug(f"Existing user logged in: {session['user_id']}")
+                    session['new_user'] = False
+            finally:
+                db.session.remove()  # Clean up session
             flash("Login successful!", "success")
             return redirect(url_for("dashboard"))
         flash("Authentication failed.", "error")
@@ -242,33 +259,37 @@ def profile():
     if 'user_id' not in session:
         logger.debug("Unauthorized profile access")
         return redirect(url_for("login"))
-    user = db.session.get(User, session['user_id'])
-    if not user:
-        logger.error(f"User not found: {session['user_id']}")
-        flash("User not found.", "error")
-        return redirect(url_for("login"))
-    west_teams, east_teams = fetch_nhl_teams()
-    if request.method == "POST":
-        favorite_west_team = request.form.get("favorite_west_team")
-        favorite_east_team = request.form.get("favorite_east_team")
-        if not favorite_west_team or not favorite_east_team:
-            flash("Please select one team from each conference.", "error")
-        elif favorite_west_team == favorite_east_team:
-            flash("Please select different teams from each conference.", "error")
-        else:
-            user.favorite_west_team = favorite_west_team
-            user.favorite_east_team = favorite_east_team
-            try:
-                db.session.commit()
-                logger.debug(f"Profile updated for user: {session['user_id']}")
-                flash("Profile updated successfully!", "success")
-                return redirect(url_for("dashboard"))
-            except Exception as e:
-                db.session.rollback()
-                logger.error(f"Profile update error: {str(e)}")
-                flash(f"Profile update error: {str(e)}", "error")
-    return render_template("profile.html", west_teams=west_teams, east_teams=east_teams,
-                           user_email=session.get('user_email'))
+    try:
+        user = db.session.get(User, session['user_id'])
+        if not user:
+            logger.error(f"User not found: {session['user_id']}")
+            flash("User not found.", "error")
+            return redirect(url_for("login"))
+        west_teams, east_teams = fetch_nhl_teams()
+        if request.method == "POST":
+            favorite_west_team = request.form.get("favorite_west_team")
+            favorite_east_team = request.form.get("favorite_east_team")
+            if not favorite_west_team or not favorite_east_team:
+                flash("Please select one team from each conference.", "error")
+            elif favorite_west_team == favorite_east_team:
+                flash("Please select different teams from each conference.", "error")
+            else:
+                user.favorite_west_team = favorite_west_team
+                user.favorite_east_team = favorite_east_team
+                try:
+                    db.session.commit()
+                    logger.debug(f"Profile updated for user: {session['user_id']}")
+                    flash("Profile updated successfully!", "success")
+                    session.pop('new_user', None)  # Clear new user flag
+                    return redirect(url_for("dashboard"))
+                except Exception as e:
+                    db.session.rollback()
+                    logger.error(f"Profile update error: {str(e)}")
+                    flash(f"Profile update error: {str(e)}", "error")
+        return render_template("profile.html", west_teams=west_teams, east_teams=east_teams,
+                               user_email=session.get('user_email'))
+    finally:
+        db.session.remove()  # Clean up session
 
 @app.route("/dashboard")
 def dashboard():
@@ -276,13 +297,17 @@ def dashboard():
         logger.debug("Unauthorized dashboard access")
         return redirect(url_for("login"))
     try:
+        # Check if new user to avoid database query if likely to fail
+        if session.get('new_user'):
+            flash("Please select your favorite teams in your profile.", "info")
+            return redirect(url_for("profile"))
         user = db.session.get(User, session['user_id'])
         if not user:
             logger.error("User not found")
             flash("User not found.", "error")
             return redirect(url_for("login"))
         if not user.favorite_west_team or not user.favorite_east_team:
-            flash("Please select your favorite teams in your profile.", "error")
+            flash("Please select your favorite teams in your profile.", "info")
             return redirect(url_for("profile"))
         teams = [user.favorite_west_team, user.favorite_east_team]
         all_series = get_all_playoff_series()
@@ -307,6 +332,10 @@ def dashboard():
             current_date=datetime.now().strftime("%Y-%m-%d"),
             user_email=session.get('user_email')
         )
+    except OperationalError as e:
+        logger.error(f"Database operational error in dashboard: {e}")
+        flash("Please select your favorite teams in your profile.", "info")
+        return redirect(url_for("profile"))
     except Exception as e:
         logger.error(f"Unexpected dashboard error: {e}")
         flash(f"Unexpected error: {e}", "error")
@@ -323,6 +352,8 @@ def dashboard():
             error=str(e),
             user_email=session.get('user_email')
         )
+    finally:
+        db.session.remove()  # Clean up session
 
 @app.route("/game/<game_id>")
 def game_details(game_id):
@@ -364,6 +395,8 @@ def game_details(game_id):
         logger.error(f"Game details error: {e}")
         flash(f"API error: {e}", "error")
         return render_template("game_preview.html", error=str(e), user_email=session.get('user_email'))
+    finally:
+        db.session.remove()  # Clean up session
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
