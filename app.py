@@ -101,12 +101,12 @@ def get_all_playoff_series(season="20242025"):
             response = requests.get(url, timeout=5)
             response.raise_for_status()
             series_data = response.json()
-            if series_data.get('seriesLetter'):
+            if series_data.get('seriesLetter') and series_data.get('topSeedTeam') and series_data.get('bottomSeedTeam'):
                 all_series.append(series_data)
-                logger.debug(f"Fetched series {letter}: {series_data.get('seriesLetter')}")
+                logger.debug(f"Fetched series {letter}: {series_data.get('seriesLetter')} with teams {series_data.get('topSeedTeam', {}).get('abbrev')} vs {series_data.get('bottomSeedTeam', {}).get('abbrev')}")
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
-                logger.error(f"Failed to fetch series {letter}: {e}")
+                logger.debug(f"Series {letter} not found: {e}")
                 continue
             raise
         except requests.exceptions.RequestException as e:
@@ -114,30 +114,37 @@ def get_all_playoff_series(season="20242025"):
     logger.debug(f"All series fetched: {len(all_series)} series")
     return all_series
 
-# Selects the current series for teams saved to the user's profile
+# Selects the current active series for teams saved to the user's profile
 def get_series_for_teams(all_series, selected_teams):
     selected_series = []
     selected_teams = [team.upper() for team in selected_teams]
-    team_series = {team: None for team in selected_teams}  # Track latest series per team
+    team_series = {team: None for team in selected_teams}  # Track latest active series per team
 
     for series in all_series:
         top_team_abbr = series.get('topSeedTeam', {}).get('abbrev', '').upper()
         bottom_team_abbr = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
+        if not top_team_abbr or not bottom_team_abbr:
+            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} due to missing team data")
+            continue
+
         top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
         bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
         round = str(series.get('round', 'Unknown'))
+        round_num = int(round) if round.isdigit() else 999
 
-        # Skip completed series where the team lost
+        # Process series for each selected team
         for team in selected_teams:
-            if team == top_team_abbr and bottom_wins >= 4:
-                continue
-            if team == bottom_team_abbr and top_wins >= 4:
+            if team not in [top_team_abbr, bottom_team_abbr]:
                 continue
 
-            if team == top_team_abbr or team == bottom_team_abbr:
-                current_series_round = int(round) if round.isdigit() else 999  # High number for named rounds
-                existing_series = team_series[team]
-                if not existing_series or current_series_round > int(existing_series.get('round', '0')) if existing_series.get('round', '0').isdigit() else 999:
+            # Skip series if the team has been eliminated
+            if (team == top_team_abbr and bottom_wins >= 4) or (team == bottom_team_abbr and top_wins >= 4):
+                continue
+
+            # Check if the series is active (not completed)
+            if top_wins < 4 and bottom_wins < 4:
+                current_series = team_series[team]
+                if not current_series or round_num > (int(current_series['round']) if current_series['round'].isdigit() else 999):
                     series_data = {
                         'series_letter': series.get('seriesLetter', ''),
                         'round': round,
@@ -167,7 +174,7 @@ def get_series_for_teams(all_series, selected_teams):
                         ]
                     }
                     team_series[team] = series_data
-                    logger.debug(f"Updated series for team {team}: {series_data}")
+                    logger.debug(f"Updated active series for team {team}: {series_data}")
 
     selected_series = [series for series in team_series.values() if series]
     logger.debug(f"Selected series: {selected_series}")
@@ -181,6 +188,10 @@ def get_team_status(all_series, team_abbr):
     for series in all_series:
         top_team = series.get('topSeedTeam', {}).get('abbrev', '').upper()
         bottom_team = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
+        if not top_team or not bottom_team:
+            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} in status check due to missing team data")
+            continue
+
         top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
         bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
         round = str(series.get('round', 'Unknown'))
@@ -189,13 +200,13 @@ def get_team_status(all_series, team_abbr):
         if team_abbr == top_team:
             if bottom_wins >= 4:
                 status['eliminated'] = True
-            elif round_num > max_round:
+            elif round_num > max_round and top_wins < 4 and bottom_wins < 4:
                 status['current_round'] = f"Round {round}" if round.isdigit() else round
                 max_round = round_num
         elif team_abbr == bottom_team:
             if top_wins >= 4:
                 status['eliminated'] = True
-            elif round_num > max_round:
+            elif round_num > max_round and top_wins < 4 and bottom_wins < 4:
                 status['current_round'] = f"Round {round}" if round.isdigit() else round
                 max_round = round_num
 
@@ -208,26 +219,35 @@ def build_playoff_bracket(all_series):
         'Eastern': {'Round 1': [], 'Round 2': [], 'Conference Finals': [], 'Stanley Cup Final': []}
     }
     for series in all_series:
-        conference = series.get('topSeedTeam', {}).get('conferenceName', '')
+        top_team = series.get('topSeedTeam', {})
+        bottom_team = series.get('bottomSeedTeam', {})
+        if not top_team or not bottom_team:
+            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} in bracket due to missing team data")
+            continue
+
+        conference = top_team.get('conferenceName', '')
         round = str(series.get('round', 'Unknown'))
         if round.isdigit():
             round_name = f"Round {round}"
         elif round.lower() in ['conference finals', 'stanley cup final']:
             round_name = round
         else:
+            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} with invalid round: {round}")
             continue
 
         series_data = {
-            'top_team': series.get('topSeedTeam', {}).get('abbrev', '').upper(),
-            'bottom_team': series.get('bottomSeedTeam', {}).get('abbrev', '').upper(),
-            'series_status': f"{series.get('topSeedTeam', {}).get('seriesWins', 0)}-{series.get('bottomSeedTeam', {}).get('seriesWins', 0)}",
-            'winner': series.get('topSeedTeam', {}).get('abbrev', '').upper() if series.get('topSeedTeam', {}).get('seriesWins', 0) >= 4 else series.get('bottomSeedTeam', {}).get('abbrev', '').upper() if series.get('bottomSeedTeam', {}).get('seriesWins', 0) >= 4 else None
+            'top_team': top_team.get('abbrev', '').upper(),
+            'bottom_team': bottom_team.get('abbrev', '').upper(),
+            'series_status': f"{top_team.get('seriesWins', 0)}-{bottom_team.get('seriesWins', 0)}",
+            'winner': top_team.get('abbrev', '').upper() if top_team.get('seriesWins', 0) >= 4 else bottom_team.get('abbrev', '').upper() if bottom_team.get('seriesWins', 0) >= 4 else None
         }
 
         if conference == 'Western':
             bracket['Western'][round_name].append(series_data)
         elif conference == 'Eastern':
             bracket['Eastern'][round_name].append(series_data)
+        else:
+            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} with unknown conference: {conference}")
 
     logger.debug(f"Bracket data: {bracket}")
     return bracket
@@ -345,7 +365,7 @@ def dashboard():
         east_team_info = next((t for t in fetch_nhl_teams()[1] if t["abbr"] == user.favorite_east_team),
                               {"name": "Unknown", "abbr": "Unknown"})
         west_team_status = get_team_status(all_series, user.favorite_west_team)
-        east_team_info = get_team_status(all_series, user.favorite_east_team)
+        east_team_status = get_team_status(all_series, user.favorite_east_team)
         west_team_info.update(west_team_status)
         east_team_info.update(east_team_status)
         west_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_west_team}_light.svg"

@@ -65,6 +65,12 @@ nav a:hover {
     justify-content: space-between;
     align-items: center;
 }
+.current-series {
+    font-weight: bold;
+    background: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 4px;
+}
 .toggle-btn {
     background: #c8102e; /* NHL red */
     color: #fff;

@@ -33,7 +33,7 @@
                 <h3>{{ west_team.name }}</h3>
                 {% for series in series_to_display if west_team.abbr in [series.top_team, series.bottom_team] %}
                     <div class="series-card">
-                        <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}">Current Series: {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
+                        <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}" class="current-series">Current Series: {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
                         <p>Series Status: {{ series.series_status }}</p>
                         <p>Round: {{ series.round }}</p>
                         <div class="game-grid" id="grid-{{ series.series_letter }}" style="display: none;">
@@ -77,7 +77,7 @@
                 <h3>{{ east_team.name }}</h3>
                 {% for series in series_to_display if east_team.abbr in [series.top_team, series.bottom_team] %}
                     <div class="series-card">
-                        <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}">Current Series: {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
+                        <h3 role="button" aria-expanded="false" aria-controls="grid-{{ series.series_letter }}" class="current-series">Current Series: {{ series.top_team }} vs {{ series.bottom_team }} <button class="toggle-btn" aria-label="Show games for {{ series.top_team }} vs {{ series.bottom_team }}">Show Games</button></h3>
                         <p>Series Status: {{ series.series_status }}</p>
                         <p>Round: {{ series.round }}</p>
                         <div class="game-grid" id="grid-{{ series.series_letter }}" style="display: none;">
