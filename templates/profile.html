@@ -2,7 +2,7 @@
 {% block title %}Profile{% endblock %}
 {% block content %}
     <div class="profile-card">
-        <h2>Update Your Playoff Team Selections</h2>
+        <h2>Your Profile ({{ user_email }})</h2>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -11,30 +11,25 @@
             {% endif %}
         {% endwith %}
         <form method="POST">
-            <div class="form-group">
-                <label for="favorite_west_team">Favorite Western Conference Team</label>
-                <select id="favorite_west_team" name="favorite_west_team" required>
-                    <option value="">Select a Western Team</option>
-                    {% for team in west_teams %}
-                        <option value="{{ team.abbr }}" {% if current_user.favorite_west_team == team.abbr %}selected{% endif %}>
-                            {{ team.name }}
-                        </option>
-                    {% endfor %}
-                </select>
+            <div class="form-content">
+                <div class="form-group">
+                    <label for="favorite_west_team">Favorite Western Conference Team</label>
+                    <select id="favorite_west_team" name="favorite_west_team" required>
+                        {% for team in west_teams %}
+                            <option value="{{ team.abbr }}">{{ team.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="favorite_east_team">Favorite Eastern Conference Team</label>
+                    <select id="favorite_east_team" name="favorite_east_team" required>
+                        {% for team in east_teams %}
+                            <option value="{{ team.abbr }}">{{ team.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
             </div>
-            <div class="form-group">
-                <label for="favorite_east_team">Favorite Eastern Conference Team</label>
-                <select id="favorite_east_team" name="favorite_east_team" required>
-                    <option value="">Select an Eastern Team</option>
-                    {% for team in east_teams %}
-                        <option value="{{ team.abbr }}" {% if current_user.favorite_east_team == team.abbr %}selected{% endif %}>
-                            {{ team.name }}
-                        </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary">Save Profile</button>
-            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Go to Dashboard</a>
         </form>
     </div>
 {% endblock %}

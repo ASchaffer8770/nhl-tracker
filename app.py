@@ -1,44 +1,58 @@
 import logging
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
 import requests
 import os
-import re
-from dotenv import load_dotenv  # Add for environment variables
+from dotenv import load_dotenv
+from urllib.parse import urlencode
+from authlib.integrations.flask_client import OAuth
 
-# Load environment variables
+# Load environment variables (for local development)
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())  # Use env var, fallback to random for local
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+app.secret_key = os.getenv('SECRET_KEY')
+if not app.secret_key:
+    raise ValueError("No SECRET_KEY set in environment variables")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SESSION_PERMANENT'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = True
 NHL_API_URL = "https://api-web.nhle.com/v1/"
+
+# Auth0 configuration
+AUTH0_DOMAIN = os.getenv('AUTH0_DOMAIN')
+AUTH0_CLIENT_ID = os.getenv('AUTH0_CLIENT_ID')
+AUTH0_CLIENT_SECRET = os.getenv('AUTH0_CLIENT_SECRET')
+AUTH0_CALLBACK_URL = os.getenv('AUTH0_CALLBACK_URL', url_for('callback', _external=True, _scheme='https'))
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-db = SQLAlchemy(app)
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = "login"
+# Initialize OAuth
+oauth = OAuth(app)
+oauth.register(
+    name='auth0',
+    client_id=AUTH0_CLIENT_ID,
+    client_secret=AUTH0_CLIENT_SECRET,
+    server_metadata_url=f'https://{AUTH0_DOMAIN}/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid profile email'},
+)
 
+db = SQLAlchemy(app)
 
 # Database model
-class User(UserMixin, db.Model):
-    id = db.Column(db.String(50), primary_key=True)
-    password = db.Column(db.String(100), nullable=False)
+class User(db.Model):
+    id = db.Column(db.String(100), primary_key=True)  # Auth0 sub (user_id)
     favorite_west_team = db.Column(db.String(10))  # e.g., "COL"
     favorite_east_team = db.Column(db.String(10))  # e.g., "TBL"
-
 
 # Create database
 with app.app_context():
     db.create_all()
-
 
 # Fetch playoff teams by conference
 def fetch_nhl_teams(season="20242025"):
@@ -65,10 +79,9 @@ def fetch_nhl_teams(season="20242025"):
         logger.error(f"Failed to fetch teams: {e}")
         return [], []
 
-
 # Fetch all playoff series
 def get_all_playoff_series(season="20242025"):
-    series_letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']  # First-round series
+    series_letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
     all_series = []
     for letter in series_letters:
         url = f"{NHL_API_URL}schedule/playoff-series/{season}/{letter.lower()}"
@@ -82,8 +95,7 @@ def get_all_playoff_series(season="20242025"):
             logger.error(f"Failed to fetch series {letter}: {e}")
     return all_series
 
-
-# Selects the series for teams that are saved to the user's profile
+# Selects the series for teams saved to the user's profile
 def get_series_for_teams(all_series, selected_teams):
     selected_series = []
     for series in all_series:
@@ -120,12 +132,10 @@ def get_series_for_teams(all_series, selected_teams):
             logger.debug(f"Found series for teams {top_team_abbr}/{bottom_team_abbr}")
     return selected_series
 
-
 # Fetches live game data if one is currently live
 def fetch_live_game_data(teams, date):
     """Fetch live game data for the given teams on the specified date range."""
     try:
-        # Check today and tomorrow to find live games
         dates = [date, date + timedelta(days=1)]
         for check_date in dates:
             date_str = check_date.strftime('%Y-%m-%d')
@@ -148,7 +158,6 @@ def fetch_live_game_data(teams, date):
                     boxscore_response.raise_for_status()
                     boxscore = boxscore_response.json()
 
-                    # Extract live game data
                     live_data = {
                         "game_id": game_id,
                         "teams": f"{boxscore.get('awayTeam', {}).get('abbrev', 'TBD')} @ {boxscore.get('homeTeam', {}).get('abbrev', 'TBD')}",
@@ -162,7 +171,6 @@ def fetch_live_game_data(teams, date):
                     logger.debug(f"Live game found: team={team}, data={live_data}")
                     return team, live_data
 
-        # Mock live game for testing
         logger.debug(f"No live games found for {teams} on {dates}, using mock data")
         if teams:
             mock_team = teams[0]
@@ -183,180 +191,109 @@ def fetch_live_game_data(teams, date):
         logger.error(f"Failed to fetch live game data: {e}")
         return None, None
 
+@app.route("/")
+def index():
+    logger.debug(f"Accessing root route, session={session.get('user_id')}")
+    if 'user_id' in session:
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
 
-@login_manager.user_loader
-def load_user(user_id):
-    logger.debug(f"Loading user: {user_id}")
-    return db.session.get(User, user_id)
-
-
-# Both are root routes for logging in
-@app.route("/", methods=["GET", "POST"])
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login")
 def login():
-    if request.method == "POST":
-        logger.debug("Processing POST request for login")
-        username = request.form.get("username")
-        password = request.form.get("password")
-        logger.debug(f"Login attempt: username={username}, password_length={len(password or '')}")
+    logger.debug(f"Initiating Auth0 login")
+    return oauth.auth0.authorize_redirect(redirect_uri=AUTH0_CALLBACK_URL)
 
-        if not username or not password:
-            logger.debug("Missing login credentials")
-            flash("Username and password are required.", "error")
-        else:
-            user = db.session.get(User, username)
+@app.route("/callback")
+def callback():
+    logger.debug(f"Handling Auth0 callback")
+    try:
+        token = oauth.auth0.authorize_access_token()
+        user_info = token.get('userinfo')
+        if user_info:
+            session['user_id'] = user_info.get('sub')
+            session['user_email'] = user_info.get('email', 'Unknown')
+            user = db.session.get(User, session['user_id'])
             if not user:
-                logger.debug(f"Login failed: Username {username} not found")
-                flash("Username does not exist.", "error")
-            elif user.password != password:
-                logger.debug(f"Login failed: Incorrect password for {username}")
-                flash("Incorrect password.", "error")
-            else:
-                login_user(user)
-                logger.debug(f"User {username} logged in successfully")
-                flash("Login successful!", "success")
-                return redirect(url_for("dashboard"))
-    logger.debug("Rendering login page")
-    return render_template("login.html")
-
-
-# Sign up route with regex for user credentials
-@app.route("/signup", methods=["GET", "POST"])
-def signup():
-    if request.method == "POST":
-        logger.debug("Processing POST request for signup")
-        username = request.form.get("username")
-        password = request.form.get("password")
-        confirm_password = request.form.get("confirm_password")
-        logger.debug(
-            f"Signup attempt: username={username}, password_length={len(password or '')}, confirm_password_length={len(confirm_password or '')}")
-
-        # Validation checks
-        if not username or not password or not confirm_password:
-            logger.debug("Missing form fields")
-            flash("All fields are required.", "error")
-        elif len(username) < 3:
-            logger.debug("Username too short")
-            flash("Username must be at least 3 characters.", "error")
-        elif not re.match(r"^[a-zA-Z0-9]+$", username):
-            logger.debug("Invalid username format")
-            flash("Username must be alphanumeric.", "error")
-        elif len(password) < 6:
-            logger.debug("Password too short")
-            flash("Password must be at least 6 characters.", "error")
-        elif password != confirm_password:
-            logger.debug("Passwords do not match")
-            flash("Passwords do not match.", "error")
-        elif db.session.get(User, username):
-            logger.debug("Username already exists")
-            flash("Username already exists.", "error")
-        else:
-            new_user = User(id=username, password=password)
-            db.session.add(new_user)
-            try:
+                user = User(id=session['user_id'])
+                db.session.add(user)
                 db.session.commit()
-                logger.debug(f"User {username} created successfully")
-                flash("Signup successful! Please log in.", "success")
-                return redirect(url_for("login"))
-            except Exception as e:
-                db.session.rollback()
-                logger.error(f"Signup error: {str(e)}")
-                flash(f"Signup error: {str(e)}", "error")
-    logger.debug("Rendering signup page")
-    return render_template("signup.html")
+                logger.debug(f"Created new user: {session['user_id']}")
+            else:
+                logger.debug(f"Existing user logged in: {session['user_id']}")
+            flash("Login successful!", "success")
+            return redirect(url_for("dashboard"))
+        flash("Authentication failed.", "error")
+        return redirect(url_for("login"))
+    except Exception as e:
+        logger.error(f"Auth0 callback error: {e}")
+        flash(f"Authentication error: {e}", "error")
+        return redirect(url_for("login"))
 
-
-# Check db to see if user already exists
-@app.route("/check_username", methods=["POST"])
-def check_username():
-    username = request.form.get("username")
-    mode = request.form.get("mode", "signup")
-    logger.debug(f"Checking username: {username}, mode={mode}, request_origin={request.headers.get('User-Agent')}")
-    if not username:
-        logger.debug("Username check: Missing username")
-        return jsonify({"available": False, "message": "Username is required."})
-    user_exists = bool(db.session.get(User, username))
-    if mode == "signup":
-        if user_exists:
-            logger.debug(f"Username check: {username} already taken")
-            return jsonify({"available": False, "message": "Username is already taken."})
-        logger.debug(f"Username check: {username} available")
-        return jsonify({"available": True, "message": "Username is available."})
-    else:  # mode == "login"
-        if user_exists:
-            logger.debug(f"Username check: {username} exists")
-            return jsonify({"available": True, "message": "Username exists."})
-        logger.debug(f"Username check: {username} does not exist")
-        return jsonify({"available": False, "message": "Username does not exist."})
-
+@app.route("/logout")
+def logout():
+    logger.debug(f"Logging out user, session={session.get('user_id')}")
+    session.clear()
+    params = {'returnTo': url_for('index', _external=True), 'client_id': AUTH0_CLIENT_ID}
+    return redirect(f"https://{AUTH0_DOMAIN}/v2/logout?" + urlencode(params))
 
 @app.route("/profile", methods=["GET", "POST"])
-@login_required
 def profile():
+    if 'user_id' not in session:
+        logger.debug("Unauthorized profile access")
+        return redirect(url_for("login"))
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        logger.error(f"User not found: {session['user_id']}")
+        flash("User not found.", "error")
+        return redirect(url_for("login"))
     west_teams, east_teams = fetch_nhl_teams()
     if request.method == "POST":
-        logger.debug("Processing POST request for profile")
         favorite_west_team = request.form.get("favorite_west_team")
         favorite_east_team = request.form.get("favorite_east_team")
-
         if not favorite_west_team or not favorite_east_team:
             flash("Please select one team from each conference.", "error")
         elif favorite_west_team == favorite_east_team:
             flash("Please select different teams from each conference.", "error")
         else:
-            user = db.session.get(User, current_user.id)
             user.favorite_west_team = favorite_west_team
             user.favorite_east_team = favorite_east_team
             try:
                 db.session.commit()
-                logger.debug(f"Profile updated for user: {current_user.id}")
+                logger.debug(f"Profile updated for user: {session['user_id']}")
                 flash("Profile updated successfully!", "success")
                 return redirect(url_for("dashboard"))
             except Exception as e:
                 db.session.rollback()
                 logger.error(f"Profile update error: {str(e)}")
-                flash(f"Profile update error: {str(e)}")
-
-    logger.debug("Rendering profile page")
-    return render_template("profile.html", west_teams=west_teams, east_teams=east_teams)
-
+                flash(f"Profile update error: {str(e)}", "error")
+    return render_template("profile.html", west_teams=west_teams, east_teams=east_teams,
+                           user_email=session.get('user_email'))
 
 @app.route("/dashboard")
-@login_required
 def dashboard():
+    if 'user_id' not in session:
+        logger.debug("Unauthorized dashboard access")
+        return redirect(url_for("login"))
     try:
-        logger.debug(f"Fetching dashboard for user: {current_user.id}")
-        user = db.session.get(User, current_user.id)
+        user = db.session.get(User, session['user_id'])
         if not user:
             logger.error("User not found")
             flash("User not found.", "error")
             return redirect(url_for("login"))
-
         if not user.favorite_west_team or not user.favorite_east_team:
-            logger.debug("No favorite teams selected")
             flash("Please select your favorite teams in your profile.", "error")
             return redirect(url_for("profile"))
-
         teams = [user.favorite_west_team, user.favorite_east_team]
         all_series = get_all_playoff_series()
         series_to_display = get_series_for_teams(all_series, teams)
-
-        # Fetch live game data for today
         west_live_team, west_live_game = fetch_live_game_data([user.favorite_west_team], datetime.now())
         east_live_team, east_live_game = fetch_live_game_data([user.favorite_east_team], datetime.now())
-
-        # Fetch team info
         west_team_info = next((t for t in fetch_nhl_teams()[0] if t["abbr"] == user.favorite_west_team),
                               {"name": "Unknown", "abbr": "Unknown"})
         east_team_info = next((t for t in fetch_nhl_teams()[1] if t["abbr"] == user.favorite_east_team),
                               {"name": "Unknown", "abbr": "Unknown"})
-
-        # Team logos
         west_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_west_team}_light.svg"
         east_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_east_team}_light.svg"
-
-        logger.debug(
-            f"Rendering dashboard with {len(series_to_display)} series, west_live={bool(west_live_game)}, east_live={bool(east_live_game)}")
         return render_template(
             "dashboard.html",
             west_team=west_team_info,
@@ -366,7 +303,8 @@ def dashboard():
             east_logo_url=east_logo_url,
             west_live_game=west_live_game,
             east_live_game=east_live_game,
-            current_date=datetime.now().strftime("%Y-%m-%d")
+            current_date=datetime.now().strftime("%Y-%m-%d"),
+            user_email=session.get('user_email')
         )
     except Exception as e:
         logger.error(f"Unexpected dashboard error: {e}")
@@ -381,27 +319,24 @@ def dashboard():
             west_live_game=None,
             east_live_game=None,
             current_date=datetime.now().strftime("%Y-%m-%d"),
-            error=str(e)
+            error=str(e),
+            user_email=session.get('user_email')
         )
 
-
-# Fetches game preview if available
 @app.route("/game/<game_id>")
-@login_required
 def game_details(game_id):
+    if 'user_id' not in session:
+        logger.debug("Unauthorized game details access")
+        return redirect(url_for("login"))
     try:
-        logger.debug(f"Fetching game details for game_id: {game_id}")
         boxscore_url = f"{NHL_API_URL}gamecenter/{game_id}/boxscore"
         response = requests.get(boxscore_url, timeout=5)
         response.raise_for_status()
         boxscore = response.json()
         game_state = boxscore.get("gameState", "LIVE")
-
         if game_state == "OFF":
-            logger.debug("Rendering game stats")
-            return render_template("game_stats.html", boxscore=boxscore)
+            return render_template("game_stats.html", boxscore=boxscore, user_email=session.get('user_email'))
         else:
-            # Fetch all playoff series to find the game
             all_series = get_all_playoff_series()
             game = None
             for series in all_series:
@@ -411,7 +346,6 @@ def game_details(game_id):
                         break
                 if game:
                     break
-
             if game:
                 preview_data = {
                     "teams": f"{game.get('awayTeam', {}).get('abbrev', 'TBD')} vs {game.get('homeTeam', {}).get('abbrev', 'TBD')}",
@@ -422,24 +356,13 @@ def game_details(game_id):
                         'tvBroadcasts') else 'N/A',
                     "watch": "Stream on ESPN+"
                 }
-                logger.debug(f"Rendering game preview: {preview_data}")
-                return render_template("game_preview.html", preview=preview_data)
-            logger.debug("Game preview unavailable")
-            return render_template("game_preview.html", error="Game preview unavailable")
+                return render_template("game_preview.html", preview=preview_data, user_email=session.get('user_email'))
+            return render_template("game_preview.html", error="Game preview unavailable",
+                                   user_email=session.get('user_email'))
     except requests.RequestException as e:
         logger.error(f"Game details error: {e}")
         flash(f"API error: {e}", "error")
-        return render_template("game_preview.html", error=str(e))
-
-
-@app.route("/logout")
-@login_required
-def logout():
-    logger.debug("Logging out user")
-    logout_user()
-    flash("Logged out successfully", "success")
-    return redirect(url_for("login"))
-
+        return render_template("game_preview.html", error=str(e), user_email=session.get('user_email'))
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
