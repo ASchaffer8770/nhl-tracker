@@ -101,8 +101,14 @@ def get_all_playoff_series(season="20242025"):
             response = requests.get(url, timeout=5)
             response.raise_for_status()
             series_data = response.json()
-            all_series.append(series_data)
-            logger.debug(f"Fetched series {letter}: {series_data.get('seriesLetter')}")
+            if series_data.get('seriesLetter'):  # Ensure valid series data
+                all_series.append(series_data)
+                logger.debug(f"Fetched series {letter}: {series_data.get('seriesLetter')}")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.error(f"Failed to fetch series {letter}: {e}")
+                continue
+            raise
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch series {letter}: {e}")
     return all_series
@@ -110,13 +116,14 @@ def get_all_playoff_series(season="20242025"):
 # Selects the series for teams saved to the user's profile
 def get_series_for_teams(all_series, selected_teams):
     selected_series = []
+    selected_teams = [team.upper() for team in selected_teams]  # Normalize to uppercase
     for series in all_series:
-        top_team_abbr = series.get('topSeedTeam', {}).get('abbrev', '')
-        bottom_team_abbr = series.get('bottomSeedTeam', {}).get('abbrev', '')
+        top_team_abbr = series.get('topSeedTeam', {}).get('abbrev', '').upper()
+        bottom_team_abbr = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
         if top_team_abbr in selected_teams or bottom_team_abbr in selected_teams:
-            selected_series.append({
+            series_data = {
                 'series_letter': series.get('seriesLetter', ''),
-                'round': series.get('round', 'Unknown'),
+                'round': str(series.get('round', 'Unknown')),  # Convert to string
                 'top_team': top_team_abbr,
                 'bottom_team': bottom_team_abbr,
                 'series_status': f"{series.get('topSeedTeam', {}).get('seriesWins', 0)}-{series.get('bottomSeedTeam', {}).get('seriesWins', 0)}",
@@ -141,19 +148,22 @@ def get_series_for_teams(all_series, selected_teams):
                             'awayTeam', {}).get('score', 0) > game.get('homeTeam', {}).get('score', 0) else None
                     } for game in series.get('games', [])
                 ]
-            })
-            logger.debug(f"Found series for teams {top_team_abbr}/{bottom_team_abbr}")
+            }
+            selected_series.append(series_data)
+            logger.debug(f"Found series for teams {top_team_abbr}/{bottom_team_abbr}: {series_data}")
+    logger.debug(f"Selected series: {selected_series}")
     return selected_series
 
 # Determine team status (eliminated, current round)
 def get_team_status(all_series, team_abbr):
     status = {'eliminated': False, 'current_round': 'Not in Playoffs'}
+    team_abbr = team_abbr.upper()  # Normalize to uppercase
     for series in all_series:
-        top_team = series.get('topSeedTeam', {}).get('abbrev', '')
-        bottom_team = series.get('bottomSeedTeam', {}).get('abbrev', '')
+        top_team = series.get('topSeedTeam', {}).get('abbrev', '').upper()
+        bottom_team = series.get('bottomSeedTeam', {}).get('abbrev', '').upper()
         top_wins = series.get('topSeedTeam', {}).get('seriesWins', 0)
         bottom_wins = series.get('bottomSeedTeam', {}).get('seriesWins', 0)
-        round = series.get('round', 'Unknown')
+        round = str(series.get('round', 'Unknown'))  # Convert to string
 
         if team_abbr == top_team:
             if bottom_wins >= 4:
@@ -176,7 +186,7 @@ def build_playoff_bracket(all_series):
     }
     for series in all_series:
         conference = series.get('topSeedTeam', {}).get('conferenceName', '')
-        round = series.get('round', 'Unknown')
+        round = str(series.get('round', 'Unknown'))  # Convert to string
         if round.isdigit():
             round_name = f"Round {round}"
         elif round.lower() in ['conference finals', 'stanley cup final']:
@@ -185,10 +195,10 @@ def build_playoff_bracket(all_series):
             continue
 
         series_data = {
-            'top_team': series.get('topSeedTeam', {}).get('abbrev', ''),
-            'bottom_team': series.get('bottomSeedTeam', {}).get('abbrev', ''),
+            'top_team': series.get('topSeedTeam', {}).get('abbrev', '').upper(),
+            'bottom_team': series.get('bottomSeedTeam', {}).get('abbrev', '').upper(),
             'series_status': f"{series.get('topSeedTeam', {}).get('seriesWins', 0)}-{series.get('bottomSeedTeam', {}).get('seriesWins', 0)}",
-            'winner': series.get('topSeedTeam', {}).get('abbrev', '') if series.get('topSeedTeam', {}).get('seriesWins', 0) >= 4 else series.get('bottomSeedTeam', {}).get('abbrev', '') if series.get('bottomSeedTeam', {}).get('seriesWins', 0) >= 4 else None
+            'winner': series.get('topSeedTeam', {}).get('abbrev', '').upper() if series.get('topSeedTeam', {}).get('seriesWins', 0) >= 4 else series.get('bottomSeedTeam', {}).get('abbrev', '').upper() if series.get('bottomSeedTeam', {}).get('seriesWins', 0) >= 4 else None
         }
 
         if conference == 'Western':
