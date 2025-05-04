@@ -1,3 +1,8 @@
+# Alex Schaffer
+# 05/04/2025
+# CS-115
+# Final Project
+
 import logging
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session
