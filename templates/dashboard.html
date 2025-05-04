@@ -116,50 +116,9 @@
                 {% endfor %}
             </div>
 
-            <!-- Playoff Bracket -->
-            <div class="bracket">
-                <h2>2025 Stanley Cup Playoffs Bracket</h2>
-                {% if bracket.Western or bracket.Eastern %}
-                    <div class="conference-bracket">
-                        <h3>Western Conference</h3>
-                        {% for round, series_list in bracket.Western.items() %}
-                            {% if series_list %}
-                                <div class="round">
-                                    <h4>{{ round }}</h4>
-                                    {% for series in series_list %}
-                                        <div class="series">
-                                            <p>{{ series.top_team }} vs {{ series.bottom_team }}: {{ series.series_status }}</p>
-                                            {% if series.winner %}
-                                                <p>Winner: {{ series.winner }}</p>
-                                            {% endif %}
-                                        </div>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
-                    <div class="conference-bracket">
-                        <h3>Eastern Conference</h3>
-                        {% for round, series_list in bracket.Eastern.items() %}
-                            {% if series_list %}
-                                <div class="round">
-                                    <h4>{{ round }}</h4>
-                                    {% for series in series_list %}
-                                        <div class="series">
-                                            <p>{{ series.top_team }} vs {{ series.bottom_team }}: {{ series.series_status }}</p>
-                                            {% if series.winner %}
-                                                <p>Winner: {{ series.winner }}</p>
-                                            {% endif %}
-                                        </div>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <p class="no-games">No playoff bracket data available.</p>
-                {% endif %}
-            </div>
+            {% if not series_to_display %}
+                <p class="no-games">No playoff series found for your teams yet. Check back as the playoffs progress!</p>
+            {% endif %}
         </div>
     </div>
 

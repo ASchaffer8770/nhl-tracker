@@ -201,45 +201,6 @@ nav a:hover {
     margin-top: 1rem;
 }
 
-/* Playoff Bracket */
-.bracket {
-    margin-top: 40px;
-    padding: 20px;
-    background-color: #f8f9fa;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-.conference-bracket {
-    margin-bottom: 20px;
-}
-.conference-bracket h3 {
-    font-size: 1.5em;
-    margin-bottom: 10px;
-    color: #003087; /* NHL blue */
-    font-weight: bold;
-}
-.round {
-    margin-bottom: 15px;
-}
-.round h4 {
-    font-size: 1.2em;
-    margin-bottom: 10px;
-    color: #003087;
-    font-weight: bold;
-}
-.series {
-    background-color: #fff;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-bottom: 10px;
-}
-.series p {
-    margin: 5px 0;
-    font-size: 0.9em;
-    color: #333;
-}
-
 /* Profile and Login */
 .profile-card, .login-card {
     max-width: 600px;
@@ -320,14 +281,5 @@ input:invalid, select:invalid {
     .toggle-btn {
         padding: 0.4rem 0.8rem;
         font-size: 0.8em;
-    }
-    .bracket {
-        padding: 10px;
-    }
-    .conference-bracket h3 {
-        font-size: 1.3em;
-    }
-    .round h4 {
-        font-size: 1.1em;
     }
 }

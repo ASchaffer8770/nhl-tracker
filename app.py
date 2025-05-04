@@ -217,46 +217,6 @@ def get_team_status(all_series, team_abbr):
 
     return status
 
-# Build playoff bracket
-def build_playoff_bracket(all_series):
-    bracket = {
-        'Western': {'Round 1': [], 'Round 2': [], 'Conference Finals': [], 'Stanley Cup Final': []},
-        'Eastern': {'Round 1': [], 'Round 2': [], 'Conference Finals': [], 'Stanley Cup Final': []}
-    }
-    for series in all_series:
-        top_team = series.get('topSeedTeam', {})
-        bottom_team = series.get('bottomSeedTeam', {})
-        if not top_team.get('abbrev') or not bottom_team.get('abbrev'):
-            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} in bracket due to missing team data")
-            continue
-
-        conference = top_team.get('conferenceName', '')
-        round = str(series.get('round', 'Unknown'))
-        if round.isdigit():
-            round_name = f"Round {round}"
-        elif round.lower() in ['conference finals', 'stanley cup final']:
-            round_name = round
-        else:
-            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} with invalid round: {round}")
-            continue
-
-        series_data = {
-            'top_team': top_team.get('abbrev', '').upper(),
-            'bottom_team': bottom_team.get('abbrev', '').upper(),
-            'series_status': f"{top_team.get('seriesWins', 0)}-{bottom_team.get('seriesWins', 0)}",
-            'winner': top_team.get('abbrev', '').upper() if top_team.get('seriesWins', 0) >= 4 else bottom_team.get('abbrev', '').upper() if bottom_team.get('seriesWins', 0) >= 4 else None
-        }
-
-        if conference == 'Western':
-            bracket['Western'][round_name].append(series_data)
-        elif conference == 'Eastern':
-            bracket['Eastern'][round_name].append(series_data)
-        else:
-            logger.debug(f"Skipping series {series.get('seriesLetter', 'unknown')} with unknown conference: {conference}")
-
-    logger.debug(f"Bracket data: {bracket}")
-    return bracket
-
 @app.route("/")
 def index():
     logger.debug(f"Accessing root route, session={session.get('user_id')}")
@@ -375,7 +335,6 @@ def dashboard():
         east_team_info.update(east_team_status)
         west_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_west_team}_light.svg"
         east_logo_url = f"https://assets.nhle.com/logos/nhl/svg/{user.favorite_east_team}_light.svg"
-        bracket = build_playoff_bracket(all_series)
         return render_template(
             "dashboard.html",
             west_team=west_team_info,
@@ -383,7 +342,6 @@ def dashboard():
             series_to_display=series_to_display,
             west_logo_url=west_logo_url,
             east_logo_url=east_logo_url,
-            bracket=bracket,
             current_date=datetime.now().strftime("%Y-%m-%d"),
             user_email=session.get('user_email')
         )
@@ -401,7 +359,6 @@ def dashboard():
             series_to_display=[],
             west_logo_url="https://assets.nhle.com/logos/nhl/svg/NHL_light.svg",
             east_logo_url="https://assets.nhle.com/logos/nhl/svg/NHL_light.svg",
-            bracket={},
             current_date=datetime.now().strftime("%Y-%m-%d"),
             error=str(e),
             user_email=session.get('user_email')
